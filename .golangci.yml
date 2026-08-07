@@ -1,0 +1,100 @@
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+
+# golangci-lint defaults to showing only 3 occurrences of the same issue, which
+# silently hides the rest of a systemic problem. "Linting is accurate" means
+# seeing all of it.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose      # HTTP response bodies must be closed
+    - contextcheck   # context must be passed through, not dropped
+    - copyloopvar
+    - dupl
+    - errorlint      # correct errors.Is/As and %w usage
+    - goconst
+    - gocritic
+    - gosec          # security issues; matters for an endpoint handling auth
+    - misspell
+    - nilerr
+    - noctx          # no HTTP requests without a context
+    - nolintlint     # a //nolint must be specific and explained
+    - prealloc
+    - revive
+    - rowserrcheck
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+
+  settings:
+    dupl:
+      threshold: 160
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+    govet:
+      enable:
+        - shadow
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      rules:
+        - name: exported
+          arguments: ["checkPrivateReceivers"]
+        - name: package-comments
+        - name: error-strings
+        - name: context-as-argument
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Tests get more rope: duplicated table setup and long fixtures are
+      # normal, and a failed write to a recorder cannot matter. noctx is
+      # excluded because httptest.NewRequest already carries a background
+      # context and these are in-process requests, not outbound calls.
+      - path: _test\.go
+        linters:
+          - dupl
+          - errcheck
+          - gosec
+          - goconst
+          - noctx
+          - unparam
+
+      # The fake MongoDB server must parse OP_QUERY: the driver still sends a
+      # legacy isMaster over it for the very first handshake, before it knows
+      # the server supports OP_MSG. The deprecation notice is aimed at clients
+      # constructing messages, not at a server decoding what arrives.
+      - path: internal/mongotest/server\.go
+        linters:
+          - staticcheck
+        text: "SA1019.*wiremessage\\."
+
+      # Test infrastructure, not shipped code: reply lengths are bounded by the
+      # small documents this fake produces, so the int->int32 conversions gosec
+      # flags cannot overflow.
+      - path: internal/mongotest/server\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/enerzia/enerzia-be

@@ -1,0 +1,14 @@
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# build artefacts
+/bin/
+coverage.out
+coverage.html
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
