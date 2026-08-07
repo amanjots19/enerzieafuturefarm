@@ -8,6 +8,13 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    # This is a monorepo: the Go module lives in enerzia-be/, but GitHub only
+    # reads workflows from .github/workflows at the repository root, so the
+    # workflow cannot sit beside the module.
+    defaults:
+      run:
+        working-directory: enerzia-be
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,7 +23,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.5'
-          cache: true
+          cache-dependency-path: enerzia-be/go.sum
 
       # The Makefile checks for golangci-lint at $(GOPATH)/bin and exits 1 if
       # it is absent.  Install the same version that is used locally (v2.12.2)
@@ -44,4 +51,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage.out
+          path: enerzia-be/coverage.out
