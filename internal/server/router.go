@@ -80,7 +80,12 @@ func New(deps Deps) http.Handler {
 		deps.Order.RegisterWebhook(r)
 	}
 
-	return r
+	// CORS wraps the entire mux as the outermost layer so that every response —
+	// including the custom 404/405 fallback handlers that gorilla/mux does not
+	// run through r.Use — carries the correct CORS headers for cross-origin
+	// callers. Preflight requests (OPTIONS + Access-Control-Request-Method) are
+	// answered here and never reach the inner handlers.
+	return httpx.CORS(deps.Config.AllowedOrigins)(r)
 }
 
 // withMiddleware applies the same chain to the router-level fallback handlers,

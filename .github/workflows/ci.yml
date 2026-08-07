@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # cache: true caches both the module cache ($GOMODCACHE) and the build
+      # cache ($GOCACHE) so repeated runs are not dominated by downloads.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+          cache: true
+
+      # The Makefile checks for golangci-lint at $(GOPATH)/bin and exits 1 if
+      # it is absent.  Install the same version that is used locally (v2.12.2)
+      # so CI and the developer see identical results.  The module source lands
+      # in the cached module cache; only the link step re-runs on cache-hit.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Lint
+        run: make lint
+
+      # Separate step so a data race is distinguishable from a coverage failure
+      # in the Actions run summary.
+      - name: Test (race detector)
+        run: make test
+
+      # The 90% gate is enforced inside make cover; it is not duplicated here.
+      - name: Cover
+        run: make cover
+
+      # Upload even when the cover step fails so a dropped-coverage regression
+      # can be diagnosed from the report.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
