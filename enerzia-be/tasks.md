@@ -10,9 +10,19 @@ Status: `TODO` · `WIP` · `DONE` · `BLOCKED`
 
 ## In progress
 
-_nothing_ — **Phases 0–5 complete** (5.1–5.9 all DONE and verified). Phase 6
-(Hardening) is next: 6.2 CORS, 6.3 graceful shutdown, 6.4 CI. 6.1 already
-landed with 2.2.
+_nothing_ — **Phases 0–6 complete.** The backend is done to the roadmap's
+scope. Only **Phase 7 (frontend integration)** remains, and it needs
+re-planning first: the two rows below understate it badly.
+
+**The workspace is now one git repo**, pushed to
+`github.com/amanjots19/enerzieafuturefarm`. Both prior histories were preserved
+via subtree import rather than discarded, so the static-site and backend
+commits are still in `git log`. `Enerzia/` and `enerzia-be/` are ordinary
+directories now, not nested repos.
+
+Phase 6 gate: **CI green on GitHub** (run 31211813050) — lint, race tests and
+the 90% coverage gate all pass in a runner with **no database and no secrets**,
+which is independent proof that `mongotest` makes the suite genuinely hermetic.
 
 ## Blocked
 
