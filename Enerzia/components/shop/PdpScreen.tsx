@@ -1,7 +1,7 @@
-import { NUTRITION, PDP_BADGES } from '@/lib/shop/data';
-import { findProduct, variantOf } from '@/lib/shop/pricing';
+import type { ShopActions } from '@/app/shop/useShop';
+import { findProduct, rupeeFromPaise } from '@/lib/shop/pricing';
 import type { ShopAction } from '@/lib/shop/reducer';
-import type { ShopState } from '@/lib/shop/types';
+import type { ProductDTO, ShopState } from '@/lib/shop/types';
 
 import { PillBig, PriceRow } from './controls';
 
@@ -12,16 +12,45 @@ const THUMBS = [
   'linear-gradient(150deg,#e8f2e5,#b6cdae)',
 ];
 
+/** Extracts the size descriptor from a product name ("Base — Size" → "Size"). */
+const sizeLabel = (p: ProductDTO): string =>
+  p.name.split(' — ').at(-1) ?? p.name;
+
 export function PdpScreen({
   state,
   dispatch,
+  actions,
 }: {
   state: ShopState;
   dispatch: (a: ShopAction) => void;
+  actions: ShopActions;
 }) {
-  const p = findProduct(state.pdp);
-  const v = variantOf(p, state.sel);
-  const sel = state.sel[p.id];
+  const p = findProduct(state.pdp, state.products);
+  const cartPending = state.pending.cart;
+
+  // Products not yet loaded from the server — show a skeleton.
+  if (!p) {
+    return (
+      <div className="wrap screen">
+        <button
+          className="btn btn-ghost"
+          type="button"
+          style={{ marginBottom: 16 }}
+          onClick={() => dispatch({ type: 'go', screen: 'shop' })}
+        >
+          ← Back to shop
+        </button>
+        <p style={{ color: 'var(--color-muted)' }}>Loading product…</p>
+      </div>
+    );
+  }
+
+  const detail = state.pdpDetail;
+  const siblings = state.products.filter((s) => s.family === p.family);
+  // Signed in: reflect server cart; signed out: reflect the offline buffer.
+  const inCart = state.user ? state.cart?.lines.find((l) => l.productId === p.id) : undefined;
+  const inBuffer = !state.user ? state.cartBuffer.find((i) => i.productId === p.id) : undefined;
+  const existingQty = inCart?.qty ?? inBuffer?.qty ?? 0;
 
   return (
     <div className="wrap screen">
@@ -51,31 +80,48 @@ export function PdpScreen({
             <span className="stars" aria-hidden="true">
               ★★★★★
             </span>
-            <span>4.8 · 312 reviews</span>
+            {detail ? (
+              <span>
+                {detail.rating.score} · {detail.rating.count} reviews
+              </span>
+            ) : (
+              <span style={{ color: 'var(--color-muted)' }}>Loading…</span>
+            )}
           </div>
           <p className="pdp-blurb">{p.blurb}</p>
           <div className="rule" style={{ margin: '22px 0' }} />
 
-          <div className="label-cap" id="size-label">
-            Choose your size
-          </div>
-          <div
-            className="variant-row"
-            style={{ marginBottom: 20 }}
-            role="group"
-            aria-labelledby="size-label"
-          >
-            {p.variants.map((vv, i) => (
-              <PillBig
-                key={vv.label}
-                variant={vv}
-                active={i === sel}
-                onClick={() => dispatch({ type: 'pickVariant', id: p.id, index: i })}
-              />
-            ))}
-          </div>
+          {siblings.length > 1 && (
+            <>
+              <div className="label-cap" id="size-label">
+                Choose your size
+              </div>
+              <div
+                className="variant-row"
+                style={{ marginBottom: 20 }}
+                role="group"
+                aria-labelledby="size-label"
+              >
+                {siblings.map((sib) => (
+                  <PillBig
+                    key={sib.id}
+                    label={sizeLabel(sib)}
+                    sub={sib.stat2}
+                    active={sib.id === p.id}
+                    soldOut={sib.soldOut}
+                    onClick={() => dispatch({ type: 'openPdp', id: sib.id })}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
-          <PriceRow variant={v} className="pdp-price-row" />
+          <PriceRow
+            price={p.price}
+            mrp={p.mrp}
+            discountPercent={p.discountPercent}
+            className="pdp-price-row"
+          />
 
           <div className="pdp-buy">
             <div className="qty">
@@ -99,37 +145,55 @@ export function PdpScreen({
                 +
               </button>
             </div>
-            <button
-              className="btn btn-primary btn-buy"
-              type="button"
-              onClick={() => dispatch({ type: 'addFromPdp' })}
-            >
-              Add to cart
-            </button>
+            {p.soldOut ? (
+              <div
+                className="btn btn-primary btn-buy"
+                style={{ opacity: 0.45, cursor: 'default' }}
+              >
+                Sold out
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary btn-buy"
+                type="button"
+                disabled={cartPending}
+                onClick={() => void actions.addFromPdp()}
+              >
+                {existingQty > 0
+                  ? `Add more (${existingQty} ${inCart ? 'in cart' : 'selected'})`
+                  : 'Add to cart'}
+              </button>
+            )}
           </div>
 
           <div className="pdp-badges">
-            {PDP_BADGES.map((b) => (
-              <div className="pdp-badge" key={b.t}>
-                <b>{b.t}</b>
-                <span>{b.s}</span>
-              </div>
-            ))}
+            {detail ? (
+              detail.badges.map((b) => (
+                <div className="pdp-badge" key={b.title}>
+                  <b>{b.title}</b>
+                  <span>{b.subtitle}</span>
+                </div>
+              ))
+            ) : (
+              <div style={{ color: 'var(--color-muted)', fontSize: 13 }}>Loading…</div>
+            )}
           </div>
 
-          <div className="panel-nutrition">
-            <h4>Nutrition per 5 g serving</h4>
-            <table className="table">
-              <tbody>
-                {NUTRITION.map((n) => (
-                  <tr key={n.k}>
-                    <td>{n.k}</td>
-                    <td>{n.v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {detail && (
+            <div className="panel-nutrition">
+              <h4>Nutrition per {detail.nutrition.servingSize}</h4>
+              <table className="table">
+                <tbody>
+                  {detail.nutrition.rows.map((n) => (
+                    <tr key={n.key}>
+                      <td>{n.key}</td>
+                      <td>{n.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

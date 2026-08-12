@@ -1,5 +1,4 @@
-import { PAY_LABELS } from '@/lib/shop/data';
-import { addressSummary, lineShort, rupee } from '@/lib/shop/pricing';
+import { addressDTOSummary, rupeeFromPaise } from '@/lib/shop/pricing';
 import type { ShopAction } from '@/lib/shop/reducer';
 import type { ShopState } from '@/lib/shop/types';
 
@@ -10,7 +9,8 @@ export function DoneScreen({
   state: ShopState;
   dispatch: (a: ShopAction) => void;
 }) {
-  const order = state.order;
+  const order = state.placedOrder;
+  const placed = order?.status === 'placed';
 
   return (
     <div className="wrap-xs screen">
@@ -30,29 +30,53 @@ export function DoneScreen({
           </svg>
         </div>
 
-        <h1>Order placed</h1>
-        <p className="done-lead">Thank you — we&rsquo;re packing it at the farm.</p>
-        <p className="done-meta">
-          Order <strong>{state.orderId}</strong> · arriving in 3–5 days
-        </p>
+        {placed ? (
+          <>
+            <h1>Order placed</h1>
+            <p className="done-lead">Thank you — we&rsquo;re packing it at the farm.</p>
+            <p className="done-meta">
+              Order <strong>{order.orderId}</strong>
+              {order.etaText ? ` · ${order.etaText}` : ' · arriving in 3–5 days'}
+            </p>
 
-        <div className="done-panel">
-          <div className="label-cap">Shipping to</div>
-          <div className="done-addr">{addressSummary(state.addr, state.user)}</div>
-          <div className="rule" style={{ margin: '16px 0' }} />
-          <div className="done-lines">
-            {order?.lines.map((l) => (
-              <div className="mini-line" key={l.key}>
-                <span>{lineShort(l)}</span>
-                <span>{rupee(l.price * l.qty)}</span>
+            <div className="done-panel">
+              <div className="label-cap">Shipping to</div>
+              <div className="done-addr">
+                <strong>{order.shippingAddress.name}</strong>
+                <br />
+                {addressDTOSummary(order.shippingAddress)}
+                <br />
+                +91 {state.user?.phone ?? ''}
               </div>
-            ))}
-            <div className="done-paid">
-              <b>Paid via {order ? PAY_LABELS[order.pay] : ''}</b>
-              <span className="summary-total">{order ? rupee(order.total) : ''}</span>
+              <div className="rule" style={{ margin: '16px 0' }} />
+              <div className="done-lines">
+                {order.lines.map((l) => (
+                  <div className="mini-line" key={l.productId}>
+                    <span>{l.name} × {l.qty}</span>
+                    <span>{rupeeFromPaise(l.lineTotal)}</span>
+                  </div>
+                ))}
+                <div className="done-paid">
+                  <b>Paid via {order.payment?.label ?? 'Razorpay'}</b>
+                  <span className="summary-total">{rupeeFromPaise(order.totals.total)}</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* Degraded success: payment captured but server not yet confirmed.
+                The webhook will place the order momentarily. Never show a failure
+                to someone who has just paid. */}
+            <h1>Payment received</h1>
+            <p className="done-lead">
+              We&rsquo;ve received your payment and are confirming it.
+            </p>
+            {order && (
+              <p className="done-meta">Order <strong>{order.orderId}</strong></p>
+            )}
+          </>
+        )}
 
         <button
           className="btn btn-primary"
@@ -60,7 +84,7 @@ export function DoneScreen({
           style={{ padding: '13px 26px', marginTop: 22 }}
           onClick={() => dispatch({ type: 'go', screen: 'shop' })}
         >
-          Continue shopping
+          Back to shop
         </button>
       </div>
     </div>

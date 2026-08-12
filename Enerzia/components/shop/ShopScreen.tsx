@@ -1,7 +1,7 @@
 import Image from 'next/image';
 
-import { FILTERS, PRODUCTS, TRUST } from '@/lib/shop/data';
-import { cartKey, variantOf } from '@/lib/shop/pricing';
+import type { ShopActions } from '@/app/shop/useShop';
+import { FILTERS } from '@/lib/shop/data';
 import type { ShopAction } from '@/lib/shop/reducer';
 import type { ShopState } from '@/lib/shop/types';
 
@@ -10,11 +10,16 @@ import { Pill, PriceRow } from './controls';
 export function ShopScreen({
   state,
   dispatch,
+  actions,
 }: {
   state: ShopState;
   dispatch: (a: ShopAction) => void;
+  actions: ShopActions;
 }) {
-  const shown = PRODUCTS.filter((p) => state.filter === 'all' || p.form === state.filter);
+  const shown = state.products.filter(
+    (p) => state.filter === 'all' || p.form === state.filter,
+  );
+  const cartPending = state.pending.cart;
 
   return (
     <div className="wrap screen">
@@ -65,14 +70,15 @@ export function ShopScreen({
 
       <div className="pgrid">
         {shown.map((p) => {
-          const v = variantOf(p, state.sel);
-          /* The cart line for the variant on show, if any — its presence swaps
-             the add button for a quantity stepper. */
-          const line = state.cart.find((l) => l.key === cartKey(p.id, v.label));
-          const sel = state.sel[p.id];
+          // Signed in: use the live server cart line.
+          // Signed out: use the local offline buffer entry.
+          const line = state.user ? state.cart?.lines.find((l) => l.productId === p.id) : undefined;
+          const bufferItem = !state.user
+            ? state.cartBuffer.find((i) => i.productId === p.id)
+            : undefined;
 
           return (
-            <article className="pcard" key={p.id}>
+            <article className={`pcard${p.soldOut ? ' pcard--sold-out' : ''}`} key={p.id}>
               <button
                 className="pcard-art"
                 type="button"
@@ -97,29 +103,29 @@ export function ShopScreen({
                   </div>
                 </div>
 
-                <div className="variant-row" role="group" aria-label={`Choose size for ${p.name}`}>
-                  {p.variants.map((vv, i) => (
-                    <Pill
-                      key={vv.label}
-                      label={vv.label}
-                      active={i === sel}
-                      onClick={() => dispatch({ type: 'pickVariant', id: p.id, index: i })}
-                    />
-                  ))}
-                </div>
+                <PriceRow
+                  price={p.price}
+                  mrp={p.mrp}
+                  discountPercent={p.discountPercent}
+                  className="price-row"
+                />
 
-                <PriceRow variant={v} className="price-row" />
-
-                {line ? (
+                {p.soldOut ? (
+                  <div className="btn btn-primary btn-add" style={{ opacity: 0.45, cursor: 'default' }}>
+                    Sold out
+                  </div>
+                ) : line ? (
+                  // Signed-in stepper: drives the server cart.
                   <div
                     className="card-qty"
                     role="group"
-                    aria-label={`Quantity of ${p.name}, ${v.label}`}
+                    aria-label={`Quantity of ${p.name}`}
                   >
                     <button
                       className="btn btn-icon"
                       type="button"
-                      onClick={() => dispatch({ type: 'bumpLine', key: line.key, delta: -1 })}
+                      disabled={cartPending}
+                      onClick={() => void actions.setQty(p.id, line.qty - 1)}
                       aria-label={
                         line.qty === 1
                           ? `Remove ${p.name} from cart`
@@ -134,7 +140,40 @@ export function ShopScreen({
                     <button
                       className="btn btn-icon"
                       type="button"
-                      onClick={() => dispatch({ type: 'bumpLine', key: line.key, delta: 1 })}
+                      disabled={cartPending || line.qty >= 99}
+                      onClick={() => void actions.setQty(p.id, line.qty + 1)}
+                      aria-label={`Increase quantity of ${p.name}`}
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : bufferItem ? (
+                  // Signed-out stepper: drives the local offline buffer.
+                  <div
+                    className="card-qty"
+                    role="group"
+                    aria-label={`Quantity of ${p.name}`}
+                  >
+                    <button
+                      className="btn btn-icon"
+                      type="button"
+                      onClick={() => actions.setBufferQty(p.id, bufferItem.qty - 1)}
+                      aria-label={
+                        bufferItem.qty === 1
+                          ? `Remove ${p.name} from selection`
+                          : `Decrease quantity of ${p.name}`
+                      }
+                    >
+                      −
+                    </button>
+                    <span className="card-qty-val" aria-live="polite">
+                      {bufferItem.qty} <span className="card-qty-unit">selected</span>
+                    </span>
+                    <button
+                      className="btn btn-icon"
+                      type="button"
+                      disabled={bufferItem.qty >= 99}
+                      onClick={() => actions.setBufferQty(p.id, bufferItem.qty + 1)}
                       aria-label={`Increase quantity of ${p.name}`}
                     >
                       +
@@ -144,7 +183,8 @@ export function ShopScreen({
                   <button
                     className="btn btn-primary btn-add"
                     type="button"
-                    onClick={() => dispatch({ type: 'addToCart', product: p, variant: v, qty: 1 })}
+                    disabled={cartPending}
+                    onClick={() => void actions.addItem(p.id, 1)}
                   >
                     Add to cart
                   </button>
@@ -156,7 +196,7 @@ export function ShopScreen({
       </div>
 
       <div className="trust">
-        {TRUST.map((t) => (
+        {state.trust.map((t) => (
           <div key={t.big}>
             <div className="trust-big">{t.big}</div>
             <div className="trust-body">{t.body}</div>

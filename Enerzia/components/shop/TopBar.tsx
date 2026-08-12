@@ -1,12 +1,20 @@
 import Image from 'next/image';
 
+import { AccountControl } from '@/components/shop/AccountControl';
 import type { ShopAction } from '@/lib/shop/reducer';
+import type { UserDTO } from '@/lib/shop/types';
 
 export function TopBar({
   count,
+  booting,
+  user,
+  signOut,
   dispatch,
 }: {
   count: number;
+  booting: boolean;
+  user: UserDTO | null;
+  signOut: () => void;
   dispatch: (a: ShopAction) => void;
 }) {
   return (
@@ -37,9 +45,12 @@ export function TopBar({
           <a href="#">Our Farm</a>
         </nav>
 
+        <AccountControl user={user} dispatch={dispatch} signOut={signOut} />
+
         <button
           className="btn btn-cart"
           type="button"
+          disabled={booting}
           onClick={() => dispatch({ type: 'requireAuth', dest: 'cart' })}
         >
           <svg
@@ -58,7 +69,7 @@ export function TopBar({
             <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
           </svg>
           Cart
-          {count > 0 && <span className="cart-badge">{count}</span>}
+          {!booting && count > 0 && <span className="cart-badge">{count}</span>}
         </button>
       </div>
     </div>
