@@ -1,6 +1,9 @@
 # Session handoff
 
-How we work, where things stand, and the prompts to dispatch next.
+How we work, where things stand, and what to do next.
+
+Last updated 2026-08-12, after the storefront was wired end to end and sign-in
+moved to the MSG91 widget.
 
 ---
 
@@ -8,11 +11,11 @@ How we work, where things stand, and the prompts to dispatch next.
 
 Paste this verbatim into a fresh session, opened at
 `~/Desktop/EnerziaFutureFarm` (the workspace root, **not** inside `Enerzia/` —
-the backend skill lives at the root and will not load otherwise).
+the skill lives at the root and will not load otherwise).
 
 ````
-We are building the Enerzia Future Farm backend: Go 1.25 + gorilla/mux +
-MongoDB Atlas, in enerzia-be/. The Next.js storefront is in Enerzia/.
+We are building Enerzia Future Farm: a Go 1.25 + gorilla/mux + MongoDB Atlas
+API in enerzia-be/, and a Next.js storefront in Enerzia/. One git repo.
 
 Read these before doing anything, in this order:
   1. .claude/skills/enerzia-backend/SKILL.md — the rules we work by
@@ -20,41 +23,34 @@ Read these before doing anything, in this order:
   3. enerzia-be/schema.md    — the MongoDB model and why it is shaped that way
   4. enerzia-be/roadmap.md   — the API contract
   5. enerzia-be/tasks.md     — the backlog and what is done
-  6. enerzia-be/handoff.md   — this file: workflow, dispatch prompts, traps
+  6. enerzia-be/handoff.md   — this file: workflow, state, traps, what is next
 
 How we work — the dispatch loop. You do not write feature code yourself:
   1. you write ONE dispatch prompt for the next task in tasks.md
   2. I paste it to a subagent
   3. I paste the subagent's report back to you, raw
-  4. you VERIFY against the actual repo — re-run `make check` and `make test`
-     yourself, never trust the report — then accept or write a fix-up prompt
+  4. you VERIFY yourself — re-run make check, and open a REAL BROWSER for any
+     frontend change. Never trust the report — then accept or write a fix-up
   5. you dispatch the next task
 
 Rules that matter most:
   - one task per dispatch, finished completely (code + tests + lint + docs)
   - 90% coverage across ./internal/... , enforced by `make check`. Never lower
     it, never weaken a test to hold it up
-  - Mongo is mocked with internal/mongotest, never skipped on a missing
-    database
+  - Mongo is mocked with internal/mongotest, never skipped on a missing database
   - money is int64 paise, never float; prices are server-authoritative
-  - contract changes are MY decision, not yours or a subagent's — if a task
-    needs roadmap.md changed, stop and ask me
+  - contract changes are MY decision — if a task needs roadmap.md or schema.md
+    changed, stop and ask me
+  - ANOTHER AGENT is building the admin catalogue in this same repo. Read the
+    ownership boundary at the top of tasks.md before touching shared code
 
-State: Phases 0–4 are complete and verified against live Atlas
-(lint clean, 96.1% coverage, green under -race). Phase 5 (Orders) is next and
-its four dispatch prompts are already written in handoff.md — start by
-re-reading Dispatch 5.1, confirming it still matches the repo, and giving it
-to me to relay.
-
-Before dispatching anything, run `make check` in enerzia-be/ and tell me the
-result, so we both know the baseline is still green.
+Before dispatching anything, run `make check` in enerzia-be/ and
+`npm run typecheck` in Enerzia/, and tell me both results.
 ````
 
 ---
 
 ## The dispatch loop
-
-You relay; I write and verify. One task per round.
 
 ```
 1. I write a dispatch prompt        →  copy it verbatim
@@ -64,237 +60,196 @@ You relay; I write and verify. One task per round.
 5. I dispatch the next task
 ```
 
-**Paste the subagent's report back even when it says "done".** I verify against
-the repo, not against the report — a subagent claiming `make check` passed is
-a claim, not evidence. Verification takes me one command; a wrong claim that
-slips through costs a lot more.
+**Paste the report back even when it says "done".** Verification is not
+optional and it is not paranoia — see "What verification has actually caught"
+below.
 
-**One task per dispatch.** Batching several removes the checkpoint that makes
-this safe.
+**Contract changes are not delegable.** If a subagent asks to change an
+endpoint shape, bring it to the user.
 
-**Contract changes are not delegable.** If a subagent comes back asking to
-change an endpoint shape, bring it to me — editing `roadmap.md` is a decision,
-and decisions stay with you.
+### Verify frontend work in a REAL browser
 
-### What I check on each report
+This is the single most important habit in this project. Subagent reports have
+been wrong or incomplete on this repeatedly:
 
-- `make check` and `make test` re-run here, not quoted from the report
-- behaviour matches `roadmap.md`, including status codes and error copy
-- tests assert failure paths, not just the happy path
-- coverage did not drop, and no test was weakened or deleted to hold it up
-- no `//nolint` without a reason, no threshold edited in the Makefile
-- scope respected — nothing unrelated touched
-- `tasks.md` updated
+- a Node script "simulating React StrictMode" instead of loading the page
+- instructions for how to verify, presented as if they were results
+- a mocked `GET /orders` fixture that hid two real bugs (a truncated order id
+  and a CSS gradient printed as visible text) which live data exposed in
+  thirty seconds
+
+**Mocking the endpoint you are verifying proves nothing.** Use real data.
+
+Watch your own measurements too. Four times a "bug" turned out to be a bad
+test: stale DOM node references after a React re-render, reading the DOM in the
+same tick as a click, comparing against an unmounted list, and a keypress that
+did not map to `ArrowDown`. Re-test before reporting a defect.
 
 ---
 
 ## Where things stand
 
-**Phases 0–4 complete**, then the model was reworked twice at your request.
+**Backend Phases 0–6: complete and verified.** `make check` clean, **97.0%**
+coverage, green under `-race`, CI green on GitHub, full checkout journey
+verified against live Atlas and Razorpay's test API.
 
-| phase | what | state |
-|---|---|---|
-| 0 Foundation | module, config, Mongo, router, middleware, `/health`, `mongotest` fake | done |
-| 1 Catalogue | products, seed, repository, three read endpoints | done |
-| 2 Auth | OTP request/verify, JWT, middleware, `/auth/me` | done |
-| 3 Cart | full CRUD with server-side pricing | done |
-| 4 Addresses | multiple per user, one default | done |
-| 5 Orders | **next** | not started |
-| 6 Hardening | 6.1 rate limiting done; CORS, graceful shutdown, CI remain | partial |
-| 7 Frontend integration | not started | |
+**Phase 7 (storefront wiring): complete bar cleanup.** The shop is real:
+9 products from Atlas, filters, PDP, OTP sign-in, server-backed cart that
+survives reload, saved addresses, review screen, Razorpay Checkout, thank-you
+screen. Verified in a browser throughout.
 
-Gate at close of session:
-`lint 0 issues · total coverage 96.1% · all tests green under -race`
+**Phase 8 (MSG91 sign-in): working.** `POST /auth/session` verifies the
+widget's access token and issues our JWT. The user confirmed a real sign-in
+works after the MSG91 IP allowlist was sorted.
 
-Live Atlas is migrated and seeded: 9 products, 4 trust tiles, no stray
-collections.
+**Phase 9 (account area): half done.** Header account menu and order history
+are built and verified; saved addresses and contact remain.
 
-### The current model, in one breath
-
-**A product is a sellable item.** Nine of them — `powder-100g`, `tablets-120`,
-`bundle-family` and so on. Each has its own price, stock, blurb, nutrition and
-detail page, and gets its own card in the grid. There is **no variant entity**.
-`family` groups siblings for display only. Carts and orders hold a `productId`.
-
-Read `schema.md` before touching any repository. It is the source of truth and
-it has been rewritten twice.
+Git: `627addc`. The frontend and MSG91 work are committed. **12 files are
+uncommitted** — the other agent's `internal/catalogue` changes plus the three
+shared docs (see below).
 
 ---
 
-## Dispatch prompts — ready to send
+## Two agents, one repo
 
-Send these in order. Each is self-contained: a subagent starts cold.
+The **shop** (this thread) and the **catalogue manager** (another session) are
+being built in parallel. The ownership table is at the top of `tasks.md`. The
+short version:
 
-### Dispatch 5.1 — Order model and id generator
+| area | owner |
+|---|---|
+| `Enerzia/`, `internal/{cart,order,msg91}`, shopper auth | shop |
+| admin endpoints, `internal/catalogue` writes, image upload | catalogue |
+| `internal/auth` | **shared — coordinate before deleting** |
+| `roadmap.md`, `schema.md`, `tasks.md` | both — re-read before editing |
 
-```
-Task 5.1 from enerzia-be/tasks.md: Order model + EFF-###### id generator.
+**Task 8.2 is parked** because of this. It deletes the OTP model, repository
+and `Sender` from `internal/auth`, which is where admin login will be built.
+The old OTP endpoints are dormant, not harmful. Deleting shared foundations
+under another agent is not worth the tidiness — leave it until admin auth
+lands.
 
-Read first, in this order:
-  1. enerzia-be/product.md   — §3.6 confirmation screen, §4 domain rules
-  2. enerzia-be/schema.md    — §orders (the document shape and both indexes)
-  3. enerzia-be/roadmap.md   — §Orders (the exact response shape)
-  4. enerzia-be/tasks.md     — the 5.1 row
-  5. .claude/skills/enerzia-backend/SKILL.md — conventions and definition of done
-
-Scope — create internal/order/ with ONLY:
-  - model.go: Order, OrderLine, Totals, Payment, Status. Money is int64 paise.
-    Lines and totals are SNAPSHOTS: they copy name/price at purchase time and
-    are never re-read from the catalogue. Keep productId for traceability.
-  - id.go: NewOrderID() returning ^EFF-\d{6}$ using crypto/rand, plus a
-    validator. It must be usable in a collision-retry loop.
-  - model_test.go, id_test.go
-
-Out of scope: the repository, the service, the handler, any routing, any
-changes outside internal/order/.
-
-Constraints:
-  - money is int64 paise, never float
-  - pure package: no I/O, no MongoDB imports, no net/http
-  - table-driven tests; cover the failure paths, not just the happy path
-  - `make check` must be clean before you report done
-
-Report back, and nothing else:
-  - files added
-  - `make lint` result
-  - `make cover` total, plus the line for internal/order
-  - anything you could not do, and why
-  - anything out of scope you noticed (for tasks.md — do NOT fix it)
-```
-
-> **The old 5.2–5.4 prompts were deleted on 2026-08-07.** They described a
-> world with cash on delivery and card numbers posted to our own API, which the
-> Razorpay decision removed. Leaving them here would have been worse than
-> having no prompt at all: a subagent starts cold and trusts what it is given.
-> Phase 5 is now nine tasks (`tasks.md`); prompts are written one at a time,
-> against the amended contracts.
-
-### Dispatch 5.2 — Amend the order model for Razorpay
-
-```
-Task 5.2 from enerzia-be/tasks.md: amend the order model for Razorpay.
-
-Context: payment moved to Razorpay Checkout and cash on delivery was dropped.
-The contracts were amended FIRST and are correct; internal/order/model.go was
-written before the decision and is now out of step with them.
-
-Read first, in this order:
-  1. enerzia-be/schema.md    — decision 6, §orders (document shape + lifecycle),
-                               and §Razorpay
-  2. enerzia-be/roadmap.md   — §Orders
-  3. enerzia-be/product.md   — §3.5
-  4. .claude/skills/enerzia-backend/SKILL.md
-Then read the existing internal/order/model.go and model_test.go.
-
-Scope — internal/order/model.go and model_test.go ONLY.
-
-Status: add pending_payment, payment_failed and expired to the existing five.
-The full set is in schema.md §orders "Lifecycle"; match it exactly.
-
-Payment: replace the current struct. It becomes the sub-document in
-schema.md §orders — provider, status, amount (int64 paise), currency, the
-three razorpay* fields, method, label, the method-detail fields (last4,
-network, bank, wallet, vpa), attempts, capturedAt and failure.
-
-  - DELETE PaymentCOD and its "Cash on delivery" label. COD no longer exists.
-  - PaymentMethod becomes what Razorpay reports: upi, card, netbanking,
-    wallet, emi, paylater. Labels: UPI, Card, Netbanking, Wallet, EMI,
-    Pay Later.
-  - method and label are EMPTY until Razorpay reports them — a pending order
-    has no method yet. Validate must accept that, and must NOT accept a
-    method-detail field (last4, vpa, bank...) on a payment with no method.
-  - last4 and network are card-only; vpa is upi-only; bank is netbanking-only;
-    wallet is wallet-only. Keep the existing "a stray last4 is rejected"
-    rigour and extend it to the new fields.
-  - There is still NO field for a card number, anywhere.
-
-Order: add CreatedAt and ExpiresAt; PlacedAt becomes nil-able (a pending order
-has not been placed). Validate must accept a pending_payment order — one that
-has no placedAt and no payment method — and still reject a placed order that
-is missing them. That split is the point of this task: a single Validate that
-only understood a finished order would either reject every reservation or wave
-through a half-finished receipt.
-
-Use *time.Time for PlacedAt and Payment.CapturedAt. This is the first pointer
-time in the repo — that is deliberate, not drift. schema.md documents both as
-null before they happen, and a zero time.Time would marshal to a year-1 date
-instead, which reads as a real timestamp to anything querying on it. Every
-other time field stays a plain time.Time.
-
-Out of scope: the repository, the gateway, any service or handler, any HTTP,
-any signature verification, and anything outside internal/order/. Do NOT
-create the Razorpay client — that is 5.3.
-
-Constraints:
-  - money stays int64 paise
-  - pure package: bson tags fine, no driver calls, no net/http
-  - table-driven; cover the new failure paths — a detail field on the wrong
-    method, a placed order with no capturedAt, an unknown status
-  - internal/order must stay >=90% covered on its own
-  - `make check` clean before you report done
-
-If you believe a contract file needs changing, STOP and say so — do not edit
-schema.md, roadmap.md or product.md.
-
-Report back, and nothing else:
-  - files changed
-  - `make lint` result
-  - `make cover` total plus the internal/order line
-  - anything you could not do, and why
-  - anything out of scope you noticed (for tasks.md — do NOT fix it)
-```
+`products.images` is additive on the wire, so the storefront ignores it safely.
+It will not render photographs until task 9.5.
 
 ---
 
-## Open decisions for you
+## What to do next
 
-| # | question | why it matters |
-|---|---|---|
-| 1 | **OTP delivery: WhatsApp or SMS?** Neither is free — comparison below. | Blocks production sign-in only; development works today via `devCode` |
-| 2 | Money as int64 paise vs whole rupees | Frontend holds rupees; conversion lands in task 7.1 |
-| 3 | The frontend still renders 4 cards with size pills | It must move to 9 flat cards to match the new model — task 7.1 |
+In priority order.
 
-### OTP delivery — the comparison
+### 1. Two dispatches are outstanding, never reported back
 
-Neither channel is free at production volume, and cost is not the deciding
-factor at this scale. Onboarding friction is. **Verify current pricing before
-committing; both change often.**
+- **7.13 — retry on a failed boot.** With the backend down, the shop shows
+  "Unable to reach the server" and stays empty **permanently**: the boot effect
+  runs once and never retries. A shopper concludes the site is broken and
+  leaves. Small fix, disproportionate save.
+- **9.6 — "My orders" lists only orders that were paid for.** The contract in
+  `roadmap.md` §`GET /orders` is already rewritten; only the repository filter
+  remains. Fixes a card reading "Total paid ₹449" beside "Payment pending".
 
-| | SMS | WhatsApp |
-|---|---|---|
-| Onboarding | **DLT registration is mandatory in India** — entity, sender header and every template registered on the operator portal. Days to weeks. | Meta Business verification + an authentication template approval. Usually faster. |
-| Per message | roughly ₹0.12–0.25 | authentication templates, typically a little cheaper |
-| Reach | every phone, no app needed | only WhatsApp users — very high in India, not universal |
-| Free tier | provider trial credit only | user-initiated *service* conversations are free, but an OTP is business-initiated and does not qualify |
+Both prompts are written and were given to the user. Re-issue them.
 
-Recommendation: **SMS via MSG91 or Fast2SMS** for universal reach; add WhatsApp
-later if delivery rates disappoint. Start the DLT registration now — it is the
-long pole, not the code.
+### 2. Finish Phase 9
 
-The code side is done: implement `auth.Sender` (one method) and swap it in
-`cmd/api/main.go`. Nothing else changes.
+- **9.3 — saved addresses screen.** The list and form live inside
+  `CartScreen`. **Extract** them so both screens share one implementation; a
+  copy will drift.
+- **9.4 — contact us.** Details supplied: `support@enerzeiafuturefarm.com`,
+  phone and WhatsApp `8826345094`. No business hours were given — omit the
+  line rather than inventing a response-time promise.
 
----
+### 3. Cleanup debts
 
-## Credentials
+- **7.9** dead-code sweep
+- **7.10** reconcile `roadmap.md` with the code — 12 discrepancies found during
+  the original exploration, since joined by the auth rewrite
+- **7.11** **pre-production data cleanup of live Atlas.** Development has run
+  against the real `enerzia` database throughout. It holds test users,
+  addresses, orders and decremented stock. Do not skip: a test order in a real
+  order history is indistinguishable from a real one later
 
-MongoDB Atlas is connected and working; `.env` is populated and git-ignored.
-Nothing outstanding until a real OTP provider is chosen.
+### 4. Before launch
+
+- **8.4/8.5** drop `otp_codes` from Atlas; live smoke test of MSG91 sign-in
+- **8.6** MSG91 panel: set the widget to **mobile only** (see traps)
+- **8.7** whitelist the **production** server's egress IP in MSG91
+- Razorpay webhook needs a public URL their dashboard accepts
+- Rotate every credential that has been pasted into a chat transcript
 
 ---
 
 ## Things that will bite whoever picks this up
 
-- **`Seed` upserts but never removes.** A superseded document shape or a
-  retired index survives a re-seed and needs a manual drop. This has already
-  happened twice during the model reworks.
-- **`make check` gates on 90% across `./internal/...`**, excluding `cmd/` and
-  `mongotest` as infrastructure. Do not lower it; add tests.
-- **Mongo is mocked, never skipped.** `internal/mongotest` is a real
-  wire-protocol fake — `Respond`, `RespondSequence`, `Cursor`, `Fail`. A
-  `t.Skip` on a missing database is an untested code path wearing a disguise.
-- **gorilla/mux loses the method-mismatch signal** when a later route fails on
-  its path matcher. `server.methodAware` recovers it; do not "simplify" it away
-  or every 405 silently becomes a 404.
-- **The frontend is now out of step with the backend** — it still assumes four
-  products with size pills. Task 7.1.
+**MSG91 rejects everything with `418` if the caller's IP is not whitelisted.**
+The check runs *before* the token is read, so a valid token and the string
+`"bogus"` return the identical error. This cost several rounds of debugging.
+`201` means the auth key is wrong; `418` means the key is fine and the caller
+was rejected; `701` means the token itself was evaluated and refused. Also:
+Go's dialer prefers IPv6, and only the IPv4 address is whitelisted — the
+client is pinned to `tcp4` for exactly this reason. Do not remove that pin.
+
+**MSG91 sends `code` as a quoted string sometimes and a bare number other
+times.** There is a custom unmarshaler for it. Do not "simplify" it to
+`string`.
+
+**The MSG91 widget must be configured mobile-only in their panel.** It can also
+verify by email, which returns an email as the identifier — and `users.phone`
+is the identity, so the server correctly refuses it while the shopper sees a
+baffling failure after MSG91 told them they succeeded. Nothing in the codebase
+can enforce or explain this.
+
+**Atlas allowlists by IP and this connection's IP rotates.** `tls: internal
+error` on all shards means the IP, not the code. It happened three times in one
+session.
+
+**`Seed` upserts but never removes.** Superseded document shapes and retired
+indexes survive a re-seed and need a manual drop.
+
+**gorilla/mux loses the method-mismatch signal** when a later route fails on its
+path matcher. `server.methodAware` recovers it; do not "simplify" it away or
+every 405 silently becomes a 404.
+
+**`npm run lint` is broken project-wide** — Next 16 removed `next lint` and
+there is no ESLint config. `npm run typecheck` is the only automated gate the
+frontend has. That makes browser verification more important, not less.
+
+**Testing a duplicate key needs `mongotest.Reply`, not `Fail`.** `Fail` sends
+`ok:0`, which the driver turns into a `CommandError` with no `WriteErrors`, so
+the test proves nothing.
+
+---
+
+## What verification has actually caught
+
+Kept as evidence that step 4 of the loop earns its cost. Every one of these
+came back in a report marked done or passing:
+
+| task | what was wrong |
+|---|---|
+| 5.2 | `Payment.Amount` never compared to `Totals.Total` — an order could be charged ₹1 for a ₹1,140 basket |
+| 5.3 | the Razorpay HTTP client had **no timeout at all** |
+| 5.4 | duplicate-key classification worked only by an accident of capitalisation |
+| 5.7 | webhook marked events processed **before** processing them, so a database wobble silently swallowed a paid order on retry |
+| 7.2 | `state.banner` was set on failure but rendered nowhere — every error was invisible |
+| 7.6 | a `<button>` nested inside a `<button>`, causing a hydration error |
+| 9.2 | order id truncated to `#F-118531`, and a CSS gradient printed as visible text |
+
+The 5.7 one is the one worth remembering: money taken, order silently expired.
+
+---
+
+## Credentials
+
+All in `enerzia-be/.env` (git-ignored) except the two public MSG91 widget
+values, which are in `Enerzia/.env.local`:
+
+- MongoDB Atlas — working
+- `RAZORPAY_KEY_ID` / `KEY_SECRET` / `WEBHOOK_SECRET` — **test mode**
+- `MSG91_AUTH_KEY` — the **account** key. Not the widget `tokenAuth`; swapping
+  them gives `201`
+- `NEXT_PUBLIC_MSG91_WIDGET_ID` / `TOKEN_AUTH` — client-side by design
+
+**Everything here has been pasted into a chat transcript at some point and
+should be rotated before launch.**
