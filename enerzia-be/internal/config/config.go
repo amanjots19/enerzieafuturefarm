@@ -44,6 +44,11 @@ type Config struct {
 	RazorpayKeyID         string
 	RazorpayKeySecret     string
 	RazorpayWebhookSecret string
+
+	// MSG91AuthKey is the server-only key for the widget token verification API.
+	// Required in production; outside production an empty value selects
+	// msg91.Unconfigured, which rejects every call.
+	MSG91AuthKey string
 }
 
 // IsProduction reports whether the process runs in production, where
@@ -76,6 +81,7 @@ func Load(getenv Getenv) (Config, error) {
 		RazorpayKeyID:         strings.TrimSpace(getenv("RAZORPAY_KEY_ID")),
 		RazorpayKeySecret:     getenv("RAZORPAY_KEY_SECRET"),
 		RazorpayWebhookSecret: getenv("RAZORPAY_WEBHOOK_SECRET"),
+		MSG91AuthKey:          getenv("MSG91_AUTH_KEY"),
 	}
 
 	var problems []string
@@ -123,6 +129,9 @@ func Load(getenv Getenv) (Config, error) {
 		}
 		if cfg.RazorpayWebhookSecret == "" {
 			problems = append(problems, "RAZORPAY_WEBHOOK_SECRET is required in production")
+		}
+		if cfg.MSG91AuthKey == "" {
+			problems = append(problems, "MSG91_AUTH_KEY is required in production")
 		}
 	}
 

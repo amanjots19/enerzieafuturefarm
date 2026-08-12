@@ -16,6 +16,7 @@ import (
 	"github.com/enerzia/enerzia-be/internal/catalogue"
 	"github.com/enerzia/enerzia-be/internal/config"
 	"github.com/enerzia/enerzia-be/internal/mongodb"
+	"github.com/enerzia/enerzia-be/internal/msg91"
 	"github.com/enerzia/enerzia-be/internal/order"
 	"github.com/enerzia/enerzia-be/internal/razorpay"
 	"github.com/enerzia/enerzia-be/internal/server"
@@ -78,12 +79,20 @@ func run(logger *slog.Logger) error {
 		sender = auth.NewLogSender(logger)
 	}
 
+	// MSG91 verifier: required in production, optional elsewhere.
+	// An empty key selects Unconfigured, which rejects every verification call.
+	var verifier msg91.Verifier = msg91.Unconfigured{}
+	if cfg.MSG91AuthKey != "" {
+		verifier = msg91.NewClient(cfg.MSG91AuthKey)
+	}
+
 	authService := auth.NewService(auth.ServiceConfig{
 		Store:      authRepo,
 		Sender:     sender,
 		Tokens:     auth.NewTokenIssuer([]byte(cfg.JWTSecret), auth.TokenTTL),
 		Pepper:     []byte(cfg.JWTSecret),
 		RevealCode: !cfg.IsProduction(),
+		Verifier:   verifier,
 	})
 
 	cartService := cart.NewService(cart.NewRepository(mongoClient.DB()), catalogueRepo)

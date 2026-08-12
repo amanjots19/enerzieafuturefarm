@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/enerzia/enerzia-be/internal/msg91"
 )
 
 // Service-level failures. Each maps to exactly one API response, so the
@@ -23,6 +25,14 @@ var (
 	// Deliberately one error: telling a caller which of those it was would
 	// help them enumerate.
 	ErrCodeRejected = errors.New("auth: code rejected")
+	// ErrSessionRejected means the MSG91 verifier rejected the access token,
+	// or the phone number it returned was not normalisable to 10 digits.
+	// One sentinel covers all rejection reasons so callers learn nothing
+	// specific about what went wrong.
+	ErrSessionRejected = errors.New("auth: session rejected")
+	// ErrGatewayError means the MSG91 API was unreachable or returned an
+	// unexpected status. Retrying may work.
+	ErrGatewayError = errors.New("auth: gateway error")
 )
 
 // Store is the persistence surface the service needs. *Repository satisfies
@@ -47,6 +57,7 @@ type Service struct {
 	revealCode   bool
 	now          func() time.Time
 	generateCode func() (string, error)
+	verifier     msg91.Verifier
 }
 
 // ServiceConfig configures the sign-in service.
@@ -59,10 +70,17 @@ type ServiceConfig struct {
 	// RevealCode puts the generated code in the response. Development only —
 	// callers must pass false in production.
 	RevealCode bool
+	// Verifier checks MSG91 widget access tokens. Defaults to
+	// msg91.Unconfigured{} when nil.
+	Verifier msg91.Verifier
 }
 
 // NewService builds the sign-in service.
 func NewService(cfg ServiceConfig) *Service {
+	v := cfg.Verifier
+	if v == nil {
+		v = msg91.Unconfigured{}
+	}
 	return &Service{
 		store:        cfg.Store,
 		sender:       cfg.Sender,
@@ -71,6 +89,7 @@ func NewService(cfg ServiceConfig) *Service {
 		revealCode:   cfg.RevealCode,
 		now:          time.Now,
 		generateCode: GenerateCode,
+		verifier:     v,
 	}
 }
 
@@ -217,3 +236,59 @@ func (s *Service) UserByID(ctx context.Context, id bson.ObjectID) (User, error) 
 
 // ParseToken verifies a bearer token. The middleware uses it.
 func (s *Service) ParseToken(token string) (Claims, error) { return s.tokens.Parse(token) }
+
+// CreateSession exchanges an MSG91 widget access token for a session JWT,
+// creating the user on first sign-in. It is the server-side half of the
+// MSG91 OTP widget flow defined in roadmap.md §Auth.
+func (s *Service) CreateSession(ctx context.Context, accessToken string) (VerifyResult, error) {
+	rawPhone, err := s.verifier.VerifyAccessToken(ctx, accessToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, msg91.ErrVerificationFailed), errors.Is(err, msg91.ErrNotConfigured):
+			// Wrap rather than replace: errors.Is(result, ErrSessionRejected) stays true,
+			// AND errors.As(result, *VerificationError) succeeds when MSG91 returned detail,
+			// so the handler can log the code/message without returning them to the client.
+			return VerifyResult{}, fmt.Errorf("%w: %w", ErrSessionRejected, err)
+		default:
+			// Covers unreachable service, context cancellation, etc.
+			// Wrap to preserve the underlying cause in the handler's error log.
+			return VerifyResult{}, fmt.Errorf("%w: %w", ErrGatewayError, err)
+		}
+	}
+
+	phone, err := normalizePhone(rawPhone)
+	if err != nil {
+		// Not 10 digits after stripping the country code — reject rather than
+		// store a malformed identity that would silently create a second account.
+		return VerifyResult{}, ErrSessionRejected
+	}
+
+	now := s.now()
+	user, err := s.store.UpsertUser(ctx, phone, now)
+	if err != nil {
+		return VerifyResult{}, fmt.Errorf("auth: create session: upsert: %w", err)
+	}
+
+	token, expiresAt, err := s.tokens.Issue(user)
+	if err != nil {
+		return VerifyResult{}, err
+	}
+	return VerifyResult{Token: token, ExpiresAt: expiresAt, User: user}, nil
+}
+
+// normalizePhone strips the Indian country code from a raw phone string and
+// validates the result is exactly 10 digits.
+//
+// MSG91 returns the number with the country code, e.g. "919999999999". The
+// users collection stores 10 digits ("9999999999"). A mismatch here would
+// silently create two accounts for the same shopper.
+func normalizePhone(raw string) (string, error) {
+	s := raw
+	if len(s) == 12 && s[:2] == "91" {
+		s = s[2:]
+	}
+	if !ValidPhone(s) {
+		return "", fmt.Errorf("auth: phone %q does not reduce to 10 digits", raw)
+	}
+	return s, nil
+}

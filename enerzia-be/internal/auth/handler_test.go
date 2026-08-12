@@ -507,6 +507,7 @@ func TestAuthRoutesRejectWrongMethods(t *testing.T) {
 	h := newAuthAPI(t, newMemStore(), &recordingSender{}, true)
 
 	tests := []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/auth/session"},
 		{http.MethodGet, "/api/v1/auth/otp/request"},
 		{http.MethodGet, "/api/v1/auth/otp/verify"},
 		{http.MethodPost, "/api/v1/auth/me"},

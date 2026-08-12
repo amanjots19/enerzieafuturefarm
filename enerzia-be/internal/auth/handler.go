@@ -5,12 +5,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/enerzia/enerzia-be/internal/httpx"
+	"github.com/enerzia/enerzia-be/internal/msg91"
 )
 
 // Handler serves the auth endpoints defined in roadmap.md §Auth.
@@ -26,6 +28,7 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 
 // Register mounts the auth routes on the /api/v1 subrouter.
 func (h *Handler) Register(r *mux.Router) {
+	r.HandleFunc("/auth/session", h.session).Methods(http.MethodPost)
 	r.HandleFunc("/auth/otp/request", h.requestCode).Methods(http.MethodPost)
 	r.HandleFunc("/auth/otp/verify", h.verifyCode).Methods(http.MethodPost)
 
@@ -72,6 +75,10 @@ type verifyCodeResponse struct {
 	User      userDTO   `json:"user"`
 }
 
+type sessionBody struct {
+	AccessToken string `json:"accessToken"`
+}
+
 type meResponse struct {
 	User userDTO `json:"user"`
 }
@@ -91,6 +98,60 @@ func toUserDTO(u User) userDTO {
 }
 
 /* ----------------------------------------------------------------- handlers */
+
+func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
+	var body sessionBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+
+	if strings.TrimSpace(body.AccessToken) == "" {
+		httpx.WriteError(w, httpx.CodeValidation, "Please sign in again.")
+		return
+	}
+
+	result, err := h.service.CreateSession(r.Context(), body.AccessToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrSessionRejected):
+			// Log MSG91's diagnostic detail when available. The code and message
+			// are diagnostic strings from MSG91, not secrets. Token length (not
+			// the value) helps identify truncation as a cause.
+			var ve *msg91.VerificationError
+			if errors.As(err, &ve) {
+				h.logger.WarnContext(r.Context(), "auth: session token rejected by MSG91",
+					slog.String("msg91_type", ve.Type),
+					slog.String("msg91_code", ve.Code),
+					slog.String("msg91_message", ve.Message),
+					slog.Int("token_length", len(body.AccessToken)),
+					slog.String("request_id", httpx.RequestIDFrom(r.Context())))
+			} else {
+				h.logger.WarnContext(r.Context(), "auth: session token rejected",
+					slog.Int("token_length", len(body.AccessToken)),
+					slog.String("request_id", httpx.RequestIDFrom(r.Context())))
+			}
+			// Client always gets one message — which check failed is a security detail.
+			httpx.WriteError(w, httpx.CodeUnauthorized,
+				"We could not verify that sign-in. Please try again.")
+		case errors.Is(err, ErrGatewayError):
+			h.logger.ErrorContext(r.Context(), "auth: msg91 gateway error",
+				slog.Any("error", err),
+				slog.Int("token_length", len(body.AccessToken)),
+				slog.String("request_id", httpx.RequestIDFrom(r.Context())))
+			httpx.WriteError(w, httpx.CodeGatewayError,
+				"We could not reach our sign-in provider. Please try again.")
+		default:
+			h.fail(r, w, "create session", err)
+		}
+		return
+	}
+
+	httpx.WriteData(w, http.StatusOK, verifyCodeResponse{
+		Token:     result.Token,
+		ExpiresAt: result.ExpiresAt,
+		User:      toUserDTO(result.User),
+	})
+}
 
 func (h *Handler) requestCode(w http.ResponseWriter, r *http.Request) {
 	var body requestCodeBody

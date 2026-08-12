@@ -31,6 +31,7 @@ func validProduction() map[string]string {
 	env["RAZORPAY_KEY_ID"] = "rzp_live_testkey"
 	env["RAZORPAY_KEY_SECRET"] = "live-key-secret"
 	env["RAZORPAY_WEBHOOK_SECRET"] = "live-webhook-secret"
+	env["MSG91_AUTH_KEY"] = "msg91-auth-key-value"
 	return env
 }
 
@@ -262,6 +263,39 @@ func TestLoadProductionWithAllRazorpayVars(t *testing.T) {
 	}
 	if cfg.RazorpayWebhookSecret != "live-webhook-secret" {
 		t.Errorf("RazorpayWebhookSecret = %q, want %q", cfg.RazorpayWebhookSecret, "live-webhook-secret")
+	}
+}
+
+func TestLoadMSG91AuthKeyRequiredInProduction(t *testing.T) {
+	env := validProduction()
+	delete(env, "MSG91_AUTH_KEY")
+
+	_, err := config.Load(stub(env))
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for missing MSG91_AUTH_KEY in production")
+	}
+	if !strings.Contains(err.Error(), "MSG91_AUTH_KEY") {
+		t.Errorf("error %q does not mention MSG91_AUTH_KEY", err)
+	}
+}
+
+func TestLoadMSG91AuthKeyOptionalOutsideProduction(t *testing.T) {
+	cfg, err := config.Load(stub(valid()))
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil for dev without MSG91_AUTH_KEY", err)
+	}
+	if cfg.MSG91AuthKey != "" {
+		t.Errorf("MSG91AuthKey = %q, want empty when not provided", cfg.MSG91AuthKey)
+	}
+}
+
+func TestLoadMSG91AuthKeyIsRead(t *testing.T) {
+	cfg, err := config.Load(stub(validProduction()))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MSG91AuthKey != "msg91-auth-key-value" {
+		t.Errorf("MSG91AuthKey = %q, want msg91-auth-key-value", cfg.MSG91AuthKey)
 	}
 }
 
