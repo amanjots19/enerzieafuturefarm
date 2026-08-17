@@ -256,6 +256,12 @@ sudo ufw --force enable
 
 ```bash
 sudo useradd --system --create-home --home-dir /srv/enerzia --shell /bin/bash enerzia
+
+# useradd creates the home at 0700, so your own account cannot even cd into it
+# — every later command would fail with "Permission denied". The checkout holds
+# only public repository code; the secrets live in /etc/enerzia at 0750.
+sudo chmod 755 /srv/enerzia
+
 sudo -u enerzia git clone https://github.com/amanjots19/enerzieafuturefarm.git /srv/enerzia/current
 ```
 
@@ -295,10 +301,12 @@ server is worse than one that will not start.
 
 ## 5. Install units and Caddy config
 
+Absolute paths, so this works regardless of which directory you are in or what
+your own account can traverse:
+
 ```bash
-cd /srv/enerzia/current/deploy
-sudo cp enerzia-*.service /etc/systemd/system/
-sudo cp Caddyfile /etc/caddy/Caddyfile
+sudo cp /srv/enerzia/current/deploy/enerzia-*.service /etc/systemd/system/
+sudo cp /srv/enerzia/current/deploy/Caddyfile /etc/caddy/Caddyfile
 sudo mkdir -p /var/log/caddy && sudo chown caddy:caddy /var/log/caddy
 sudo systemctl daemon-reload
 sudo systemctl enable enerzia-api enerzia-shop enerzia-admin
