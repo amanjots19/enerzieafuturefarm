@@ -1,0 +1,35 @@
+# Next.js storefront. Install: /etc/systemd/system/enerzia-shop.service
+[Unit]
+Description=Enerzia storefront (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=enerzia
+Group=enerzia
+WorkingDirectory=/srv/enerzia/current/Enerzia
+
+# NEXT_PUBLIC_* is baked in at BUILD time, not read here — see the runbook.
+# This file carries only runtime values.
+EnvironmentFile=-/etc/enerzia/shop.env
+Environment=NODE_ENV=production
+Environment=PORT=3100
+
+ExecStart=/usr/bin/npm run start -- -p 3100
+
+Restart=always
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=enerzia-shop
+
+[Install]
+WantedBy=multi-user.target

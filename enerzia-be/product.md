@@ -50,7 +50,7 @@ frontend — the API should own it, per product, so it can diverge later:
 - Badges: Lab tested / FSSAI licensed / No binders / Free delivery
 - Nutrition per 5 g serving: Protein 3.1 g, Iron 4.2 mg, Phycocyanin 750 mg,
   Beta-carotene 1.2 mg, Energy 19 kcal
-- Trust strip on the shop screen: 60%+, FSSAI, 0, 48 hrs
+- Trust strip on the shop screen: 62%+, FSSAI, 0, 48 hrs
 
 ---
 
@@ -108,9 +108,16 @@ is the only message shown:
 |---|---|---|---|
 | 1 | name | non-blank | Please enter the name for delivery. |
 | 2 | email | `^\S+@\S+\.\S+$` | Please enter a valid email for order updates. |
-| 3 | line1 | ≥ 6 chars trimmed | Please enter your full street address. |
-| 4 | city, state | both non-blank | Please enter your city and state. |
-| 5 | pin | exactly 6 digits | PIN code must be 6 digits. |
+| 3 | phone | exactly 10 digits | Please enter a valid 10-digit mobile number for delivery. |
+| 4 | line1 | ≥ 6 chars trimmed | Please enter your full street address. |
+| 5 | city, state | both non-blank | Please enter your city and state. |
+| 6 | pin | exactly 6 digits | PIN code must be 6 digits. |
+
+> **Added 2026-08-17.** `phone` is the delivery contact for *this address* and
+> is not the account's sign-in number, even though they are usually the same —
+> a shopper sending a gift needs the recipient reachable at the door. It is
+> required on every write; addresses saved before it existed have none, stay
+> usable, and fall back to the account number at checkout.
 
 ### 3.5 Checkout (`checkout`)
 Auth-required. Read-only address summary (Edit returns to cart), order summary,
@@ -168,7 +175,7 @@ mrpTotal = Σ (variant.mrp   × qty)
 subtotal = Σ (variant.price × qty)
 savings  = mrpTotal − subtotal
 shipping = 0  if subtotal == 0 or subtotal ≥ 499
-           49 otherwise
+           50 otherwise
 total    = subtotal + shipping
 ```
 

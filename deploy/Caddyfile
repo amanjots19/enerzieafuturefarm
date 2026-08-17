@@ -1,0 +1,60 @@
+# Enerzia Future Farm — reverse proxy and TLS.
+#
+# Caddy obtains and renews Let's Encrypt certificates automatically for every
+# hostname named below. There is no certbot, no cron job and no renewal hook:
+# the only requirement is that each hostname's A record already points at this
+# machine BEFORE Caddy starts, because issuance uses an HTTP-01 challenge on
+# port 80.
+#
+# Install:  /etc/caddy/Caddyfile      Reload:  sudo systemctl reload caddy
+
+{
+	# Certificate expiry and renewal-failure notices land here.
+	email support@enerzeiafuturefarm.com
+}
+
+# ─── Storefront ──────────────────────────────────────────────────────────────
+enerzeiafuturefarm.com, www.enerzeiafuturefarm.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3100
+
+	# HSTS. Deliberately NOT preloaded: preload is effectively irreversible and
+	# should be a decision taken once the domain is settled, not a default.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+	header Referrer-Policy "strict-origin-when-cross-origin"
+
+	log {
+		output file /var/log/caddy/shop.log
+	}
+}
+
+# ─── Admin console ───────────────────────────────────────────────────────────
+admin.enerzeiafuturefarm.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3001
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+	# The console must never be indexed or framed.
+	header X-Robots-Tag "noindex, nofollow"
+	header X-Frame-Options "DENY"
+
+	log {
+		output file /var/log/caddy/admin.log
+	}
+}
+
+# ─── API ─────────────────────────────────────────────────────────────────────
+api.enerzeiafuturefarm.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+	header X-Robots-Tag "noindex, nofollow"
+
+	log {
+		output file /var/log/caddy/api.log
+	}
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "storefront",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Enerzia", "run", "dev"],
+      "port": 3100
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "enerzia-admin", "run", "dev"],
+      "port": 3001
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+# Go API. Install: /etc/systemd/system/enerzia-api.service
+[Unit]
+Description=Enerzia API
+# Atlas is remote, so only the network is a real dependency.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=enerzia
+Group=enerzia
+WorkingDirectory=/srv/enerzia/current/enerzia-be
+
+# Secrets live here, NOT in a .env the app reads. Mode 0600, owned by root, so
+# the service can read it and nothing else on the box can.
+EnvironmentFile=/etc/enerzia/api.env
+
+ExecStart=/srv/enerzia/current/enerzia-be/bin/api
+
+Restart=always
+RestartSec=5s
+# The API refuses to boot on bad config (missing production credentials, a
+# malformed SHIP_FROM_PIN). Without this, systemd would restart it forever and
+# bury the one log line that says why.
+StartLimitIntervalSec=120
+StartLimitBurst=4
+
+# Matches the 15s drain in cmd/api/main.go, plus headroom.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Hardening. The API writes nothing to disk.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/enerzia
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=enerzia-api
+
+[Install]
+WantedBy=multi-user.target

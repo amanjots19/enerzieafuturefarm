@@ -62,8 +62,14 @@ written by seeding and by stock decrements.
   stat:  "No binders, no fillers",
   stat2: "30 days",
   blurb: "Pure spirulina pressed into 500 mg tablets...",
-  grad:  "radial-gradient(...)",     // stands in for a product photo
+  grad:  "radial-gradient(...)",     // fallback when images is empty
   position: 11,                      // display order across the whole grid
+
+  images: [                          // 0..5, display order, [0] is primary
+    { url: "https://res.cloudinary.com/<cloud>/image/upload/v1/enerzia/products/abc.jpg",
+      publicId: "enerzia/products/abc",   // Cloudinary's handle for the asset
+      alt: "Tablet jar, front" }          // optional
+  ],
 
   mrp:   NumberLong(47000),          // paise
   price: NumberLong(38000),          // paise
@@ -103,6 +109,27 @@ catalogue but remain resolvable by id.
 different nutrition or badges. Today they are seeded identically; diverging is
 an edit, not a migration.
 
+**Images are URLs, not bytes.** The array holds Cloudinary handles for at most
+five photographs; the files live in Cloudinary and are served from its CDN.
+Storing the bytes here instead would put a megabyte of JPEG inside a document
+that the shop grid reads on every page load, and Atlas storage is the most
+expensive place in this system to keep an image.
+
+`publicId` is kept alongside `url` because it is the only handle by which an
+asset can later be deleted or transformed; a URL alone would strand the file.
+Nothing deletes from Cloudinary today — removing an image from a product leaves
+the asset orphaned there, which is a small storage cost and a deliberate
+trade against deleting a file some other product might still reference.
+
+**`grad` is not replaced by `images`.** It is the fallback: a product with an
+empty array still renders, which matters because every product has one today
+and photographs arrive one at a time. `images: []` is the seeded default and is
+never `null`.
+
+Only two things write this collection: the seeder and the admin catalogue.
+Seeding sets `$setOnInsert` on stock and **never touches `images`**, so
+re-seeding cannot wipe photographs an administrator uploaded.
+
 ## `content`
 
 Small singleton documents keyed by a name, for copy that belongs to no product.
@@ -111,7 +138,7 @@ Small singleton documents keyed by a name, for copy that belongs to no product.
 {
   _id: "trust",
   tiles: [
-    { big: "60%+", body: "Complete plant protein by weight, ..." }
+    { big: "62%+", body: "Complete plant protein by weight, ..." }
   ]
 }
 ```
@@ -134,6 +161,7 @@ identity — there is no password and no email login.
       label: "Home",                 // optional, shopper-supplied
       name:  "Ananya Sharma",
       email: "ananya@example.com",
+      phone: "9876543210",             // delivery contact; ABSENT on pre-2026-08-17 addresses
       line1: "12, Anand Residency, MG Road",
       city:  "Pune",
       state: "Maharashtra",
@@ -163,7 +191,52 @@ promotes the next one, so a shopper with addresses always has one selected.
 address for order updates, not a login. Two addresses may legitimately carry
 different emails.
 
-## `otp_codes`
+`phone` is there for the same reason and is **not** the account's `phone` above.
+That one is the identity a shopper proved over OTP; this one is who a courier
+calls at the door, and a gift sent to a relative needs the relative reachable.
+Required on write, absent on addresses saved before 2026-08-17 — those stay
+usable, with checkout falling back to the account number rather than blocking a
+shopper on a field they never saw.
+
+## The administrator — **no collection, deliberately**
+
+The catalogue console signs in with an email and a bcrypt password hash held in
+the environment (`ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`). There is no `admins`
+collection, and that is a decision rather than an omission.
+
+A collection would mean a row that can be inserted, updated or read — which
+means a bug, an injection, or a leaked backup can mint or reveal an
+administrator. Configuration cannot be written by the running process at all:
+there is no code path that creates an admin, so there is none to exploit. The
+cost is that changing the password is a deploy, and there is exactly one
+account. Both are acceptable for a single-operator shop, and neither is true
+once there are several staff — at that point this becomes a real collection
+with roles, and the endpoints in `roadmap.md` §Admin do not have to change for
+it.
+
+**The hash is bcrypt, and the plaintext exists nowhere in this repository.**
+`make admin-password` reads a password on stdin and prints only its hash; the
+password is never written to a file, a log, or a response.
+
+## `otp_codes` — **REMOVED 2026-08-09**
+
+Sign-in moved to the MSG91 OTP widget, which owns the code end to end. This
+server no longer generates, stores or verifies one-time codes, so the
+collection has no writer and no reader. Drop it from live Atlas; `EnsureIndexes`
+creates but never removes, so the TTL and phone indexes need a manual drop too
+(the same trap recorded against M.2 and M.5).
+
+The design is kept below rather than deleted, because the reasoning is the part
+worth keeping: **the code was stored as a keyed hash, not a bare one.** An
+earlier draft argued plain SHA-256 was sufficient because codes are
+short-lived. That was wrong — the keyspace is only 10^6, so anyone who could
+read the collection could reverse every live code instantly and sign in as
+anybody. If OTP is ever brought back in-house, start from HMAC-SHA256 under a
+server-side pepper, domain-separated by phone number, with `attempts` and
+`consumed` enforced at the database rather than in memory.
+
+<details>
+<summary>The removed design</summary>
 
 Short-lived sign-in codes. The most security-sensitive collection here.
 
@@ -193,6 +266,8 @@ useless without the secret. The phone number is mixed into the message so a
 hash cannot be replayed against a different number. `attempts` and `consumed` enforce
 those two limits at the database, not in memory, so they survive a restart and
 work across replicas.
+
+</details>
 
 ## `carts`
 
@@ -262,6 +337,8 @@ reservation as well as a receipt.
   },
 
   shippingAddress: { /* a copy of the chosen address, not a reference */ },
+  customerPhone:   "9876543210",     // copied from the user at creation; absent on pre-phase-11 orders
+  fulfilment:      "packed",         // packed|in_transit|shipped; ABSENT until an operator sets it
 
   createdAt: ISODate("..."),
   expiresAt: ISODate("..."),         // createdAt + 15 min — NOT a TTL index
@@ -273,11 +350,15 @@ reservation as well as a receipt.
 ### Lifecycle
 
 ```
-pending_payment ──capture──▶ placed ──▶ packed ──▶ shipped ──▶ delivered
-       │                        │
-       ├──failure──▶ payment_failed          └──▶ cancelled (from any stage)
-       └──expiry───▶ expired
+pending_payment ──capture──▶ placed
+       │
+       ├──failure──▶ payment_failed     (packed, shipped, delivered, cancelled —
+       └──expiry───▶ expired             defined, produced by nothing)
 ```
+
+`status` is the **payment** lifecycle. Fulfilment is a separate field — see
+below — so that an operator marking a box packed cannot rewrite what the order
+says about money.
 
 `pending_payment` holds a stock reservation. `placed` means the money is
 captured and verified — it is the first state a customer would call "ordered",
@@ -285,8 +366,43 @@ and the only one the confirmation screen ever shows. `payment_failed` and
 `expired` both release the reservation; they are kept rather than deleted so an
 abandoned attempt can be explained.
 
-Only the transitions out of `pending_payment` are produced today; the
-fulfilment states exist so the field's domain is complete.
+`packed`, `shipped`, `delivered` and `cancelled` are valid `status` values that
+nothing produces. They predate the `fulfilment` split of 2026-08-17 and are
+kept so stored documents and the contract stay in step; `ListForUser` still
+includes them for the same reason. Removing them is task 11.9.
+
+### Fulfilment
+
+```
+(absent) ──▶ packed ──▶ in_transit ──▶ shipped
+```
+
+A **separate field from `status`** (owner decision, 2026-08-17), written only
+by the admin order book. The two are orthogonal: `status` records what Razorpay
+did with the money, `fulfilment` records what a person did with the parcel.
+Overloading one field with both would mean an operator marking a box packed had
+rewritten the order's payment state.
+
+Fulfilment is manual — there is no courier integration — so the value is
+whatever an operator last set it to. `shipped` is terminal: nothing tells us a
+parcel arrived, so there is no delivered value. There is no cancellation and no
+refund, so there is no cancelled value either.
+
+**Absent is a state.** A paid order nobody has touched has no `fulfilment` key
+at all, which reads as "Not started". That is also why this needs no migration:
+every order already in the collection is correct as it stands.
+
+No shopper-facing endpoint reads it. An order stays "Confirmed" to its buyer
+through every fulfilment step, and mapping these states into the account area
+is a later decision — which is the point of splitting the field rather than
+reusing `status`.
+
+`customerPhone` is copied off the user document at creation rather than read
+from the address, which has no phone field: the shopper already proved the
+number over OTP, and freezing it follows decision 4 — a later change to their
+number must not rewrite the contact detail on a parcel already in transit. It
+is what the shipping label prints and what an operator calls when a delivery
+goes wrong.
 
 ### Indexes
 
@@ -298,6 +414,7 @@ fulfilment states exist so the field's domain is complete.
 | `payment.razorpayPaymentId_1` | **unique**, partial on existence | one Razorpay payment can never be applied to two orders |
 | `userId_1` | **unique**, partial `status: "pending_payment"` | at most one live reservation per shopper — see below |
 | `status_1_expiresAt_1` | partial `status: "pending_payment"` | the sweeper finds abandoned reservations without scanning the collection |
+| `status_1_createdAt_-1` | `status`, `createdAt` desc | the admin order book filters by status and pages backwards on `createdAt`. `userId_1_createdAt_-1` cannot serve it — the admin query has no `userId`, so without this every page is a collection scan |
 
 **One pending order per shopper, enforced by a partial unique index.** Without
 it a shopper who opens checkout, abandons it, and opens it again reserves the
