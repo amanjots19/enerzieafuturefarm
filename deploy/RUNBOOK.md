@@ -299,6 +299,32 @@ server is worse than one that will not start.
 
 ---
 
+## 4b. Build-time values for the storefront
+
+Separate from `api.env`, and easy to miss: the sign-in widget needs two
+`NEXT_PUBLIC_` values, and they are inlined by `next build`. Setting them in
+systemd does nothing — by then the bundle already contains `undefined`, and the
+only symptom is that sign-in silently never sends an OTP.
+
+```bash
+sudo install -m 0640 -o root -g enerzia \
+  /srv/enerzia/current/deploy/build.env.example /etc/enerzia/build.env
+sudo nano /etc/enerzia/build.env
+```
+
+Get both from the MSG91 dashboard under OTP → Widget. They are not secrets —
+anything `NEXT_PUBLIC_` ships to every browser — but they belong in a file
+rather than a commit. Group-readable by `enerzia`, because `deploy.sh` runs as
+that user and needs them at build time.
+
+`deploy.sh` refuses to build without them, rather than producing a bundle where
+sign-in quietly does not work.
+
+> Adding the VM IP to MSG91 is also needed, but for a different thing: the
+> **server-side** token verification. The widget half is these two values.
+
+---
+
 ## 5. Install units and Caddy config
 
 Absolute paths, so this works regardless of which directory you are in or what

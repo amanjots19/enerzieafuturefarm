@@ -16,6 +16,20 @@ export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 ROOT="${ROOT:-/srv/enerzia/current}"
 API_BASE="${API_BASE:-https://api.enerzeiafuturefarm.com/api/v1}"
 
+# Build-time values for the storefront. NEXT_PUBLIC_* is inlined into the
+# bundle by `next build`, so these must be present HERE — setting them in
+# systemd changes nothing, because the value was already baked in.
+#
+# They are not secrets: anything NEXT_PUBLIC_ ships to every browser. The file
+# exists so they are not committed, not because they are private.
+BUILD_ENV="${BUILD_ENV:-/etc/enerzia/build.env}"
+if [ -r "$BUILD_ENV" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$BUILD_ENV"
+  set +a
+fi
+
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 fail() { printf '\033[31mFAILED: %s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -40,10 +54,15 @@ go build -trimpath -ldflags "-s -w" -o bin/api ./cmd/api
 [ -x bin/api ] || fail "the API binary was not produced"
 
 log "Building the storefront"
+# Fail here rather than shipping a bundle where these are `undefined`. That
+# failure is silent at build time and only shows up as sign-in not working,
+# with nothing in any log to explain it.
+for v in NEXT_PUBLIC_MSG91_WIDGET_ID NEXT_PUBLIC_MSG91_TOKEN_AUTH; do
+  [ -n "${!v:-}" ] || fail "$v is not set — put it in $BUILD_ENV, or sign-in will not work"
+done
+
 cd "$ROOT/Enerzia"
 npm ci --no-audit --no-fund
-# NEXT_PUBLIC_* is inlined at build time. Setting it only in systemd would ship
-# a bundle that still calls http://localhost:8080 from a customer's browser.
 NEXT_PUBLIC_API_BASE_URL="$API_BASE" npm run build
 
 log "Building the admin console"
