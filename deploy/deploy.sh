@@ -75,9 +75,11 @@ sudo systemctl restart enerzia-api
 sudo systemctl restart enerzia-shop
 sudo systemctl restart enerzia-admin
 
-log "Waiting for health"
+log "Waiting for health (a few seconds of silence here is normal)"
 for i in $(seq 1 30); do
-  if curl -fsS -o /dev/null http://127.0.0.1:8080/health; then
+  # -s not -sS: a service still starting is expected to refuse the first few
+  # connections, and printing a curl error each time reads like a failure.
+  if curl -fs -o /dev/null http://127.0.0.1:8080/health; then
     echo "  API healthy after ${i}s"
     break
   fi
@@ -87,7 +89,7 @@ done
 
 for port in 3100 3001; do
   for i in $(seq 1 30); do
-    if curl -fsS -o /dev/null "http://127.0.0.1:$port/"; then
+    if curl -fs -o /dev/null "http://127.0.0.1:$port/"; then
       echo "  port $port responding"
       break
     fi
