@@ -273,7 +273,10 @@ A dedicated unprivileged user, because the units set `ProtectSystem=strict` and
 ## 4. Secrets
 
 ```bash
-sudo install -d -m 0750 /etc/enerzia
+# Group enerzia, so the service user can TRAVERSE the directory. Without this
+# it cannot read anything inside, however permissive the files are — and the
+# failure is silent.
+sudo install -d -m 0750 -o root -g enerzia /etc/enerzia
 sudo install -m 0600 /srv/enerzia/current/deploy/api.env.example /etc/enerzia/api.env
 sudo nano /etc/enerzia/api.env
 ```
@@ -311,6 +314,17 @@ sudo install -m 0640 -o root -g enerzia \
   /srv/enerzia/current/deploy/build.env.example /etc/enerzia/build.env
 sudo nano /etc/enerzia/build.env
 ```
+
+Check both files from the service user, since `deploy.sh` runs as it:
+
+```bash
+sudo -u enerzia cat /etc/enerzia/build.env   # prints
+sudo -u enerzia cat /etc/enerzia/api.env     # Permission denied
+```
+
+**Both results are correct.** `build.env` holds values that ship to every
+browser anyway; `api.env` holds real secrets and stays `0600 root:root`, which
+systemd reads as root before dropping privileges.
 
 Get both from the MSG91 dashboard under OTP → Widget. They are not secrets —
 anything `NEXT_PUBLIC_` ships to every browser — but they belong in a file
