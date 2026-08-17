@@ -36,19 +36,20 @@ func (h *Handler) Register(r *mux.Router) {
 // and soldOut are computed rather than stored.
 
 type productDTO struct {
-	ID              string `json:"id"`
-	Family          string `json:"family"`
-	Form            string `json:"form"`
-	Name            string `json:"name"`
-	Stat            string `json:"stat"`
-	Stat2           string `json:"stat2"`
-	Blurb           string `json:"blurb"`
-	Grad            string `json:"grad"`
-	MRP             int64  `json:"mrp"`
-	Price           int64  `json:"price"`
-	DiscountPercent int    `json:"discountPercent"`
-	Stock           int    `json:"stock"`
-	SoldOut         bool   `json:"soldOut"`
+	ID              string  `json:"id"`
+	Family          string  `json:"family"`
+	Form            string  `json:"form"`
+	Name            string  `json:"name"`
+	Stat            string  `json:"stat"`
+	Stat2           string  `json:"stat2"`
+	Blurb           string  `json:"blurb"`
+	Grad            string  `json:"grad"`
+	Images          []Image `json:"images"`
+	MRP             int64   `json:"mrp"`
+	Price           int64   `json:"price"`
+	DiscountPercent int     `json:"discountPercent"`
+	Stock           int     `json:"stock"`
+	SoldOut         bool    `json:"soldOut"`
 }
 
 type siblingDTO struct {
@@ -86,6 +87,7 @@ func toProductDTO(p Product) productDTO {
 		Stat2:           p.Stat2,
 		Blurb:           p.Blurb,
 		Grad:            p.Grad,
+		Images:          orEmpty(p.Images),
 		MRP:             p.MRP,
 		Price:           p.Price,
 		DiscountPercent: p.DiscountPercent(),
@@ -147,7 +149,7 @@ func (h *Handler) getProduct(w http.ResponseWriter, r *http.Request) {
 		Siblings:  toSiblingDTOs(detail.Siblings),
 		Rating:    detail.Product.Rating,
 		Badges:    orEmpty(detail.Product.Badges),
-		Nutrition: detail.Product.Nutrition,
+		Nutrition: normaliseNutrition(detail.Product.Nutrition),
 	})
 }
 
@@ -157,7 +159,7 @@ func (h *Handler) getTrust(w http.ResponseWriter, r *http.Request) {
 		h.fail(r, w, "get trust tiles", err)
 		return
 	}
-	httpx.WriteData(w, http.StatusOK, trustResponse{Tiles: tiles})
+	httpx.WriteData(w, http.StatusOK, trustResponse{Tiles: orEmpty(tiles)})
 }
 
 // fail logs the underlying cause and returns a generic 500. Database and
@@ -176,4 +178,10 @@ func orEmpty[T any](s []T) []T {
 		return []T{}
 	}
 	return s
+}
+
+// normaliseNutrition ensures Rows is never nil so it serialises as [] not null.
+func normaliseNutrition(n Nutrition) Nutrition {
+	n.Rows = orEmpty(n.Rows)
+	return n
 }

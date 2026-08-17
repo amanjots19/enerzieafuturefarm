@@ -183,6 +183,51 @@ func TestValidateAcceptsARealProduct(t *testing.T) {
 	}
 }
 
+func TestValidateImages(t *testing.T) {
+	const validURL = "https://res.cloudinary.com/enerzia/image/upload/v1/products/abc.jpg"
+
+	makeImages := func(n int) []catalogue.Image {
+		imgs := make([]catalogue.Image, n)
+		for i := range imgs {
+			imgs[i] = catalogue.Image{URL: validURL}
+		}
+		return imgs
+	}
+
+	tests := []struct {
+		name    string
+		images  []catalogue.Image
+		wantErr string
+	}{
+		{"nil is valid", nil, ""},
+		{"empty slice is valid", []catalogue.Image{}, ""},
+		{"exactly MaxImages is valid", makeImages(catalogue.MaxImages), ""},
+		{"MaxImages+1 is rejected", makeImages(catalogue.MaxImages + 1), "at most 5 images"},
+		{"blank url is rejected", []catalogue.Image{{URL: ""}}, "blank url"},
+		{"whitespace url is rejected", []catalogue.Image{{URL: "   "}}, "blank url"},
+		{"http url is rejected", []catalogue.Image{{URL: "http://example.com/img.jpg"}}, "https://"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tabletsProduct()
+			p.Images = tt.images
+			err := p.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() error = nil, want one containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateRejectsBadProducts(t *testing.T) {
 	tests := []struct {
 		name    string

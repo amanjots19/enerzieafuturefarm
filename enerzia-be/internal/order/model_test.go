@@ -28,6 +28,8 @@ func TestStatusValid(t *testing.T) {
 		{order.StatusCancelled, true},
 		{"pending", false},
 		{"cod", false},
+		// Fulfilment is a separate field; its values are not statuses.
+		{"in_transit", false},
 		{"PLACED", false}, // case-sensitive, like the roadmap literals
 		{"", false},
 	}
@@ -37,6 +39,240 @@ func TestStatusValid(t *testing.T) {
 				t.Errorf("Status(%q).Valid() = %v, want %v", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStatusLabel(t *testing.T) {
+	tests := []struct {
+		in   order.Status
+		want string
+	}{
+		{order.StatusPendingPayment, "Payment pending"},
+		{order.StatusPlaced, "Placed"},
+		{order.StatusPaymentFailed, "Payment failed"},
+		{order.StatusExpired, "Expired"},
+		{order.StatusPacked, "Packed"},
+		{order.StatusShipped, "Shipped"},
+		{order.StatusDelivered, "Delivered"},
+		{order.StatusCancelled, "Cancelled"},
+		{"nonsense", ""}, // no guess for an unrecognised status
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.in), func(t *testing.T) {
+			if got := tt.in.Label(); got != tt.want {
+				t.Errorf("Status(%q).Label() = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestStatusLabelCoversEveryValidStatus fails if a status is added without a
+// label. Without this, a new status would silently serialise with an empty
+// statusLabel and show as a blank chip in the order book.
+func TestStatusLabelCoversEveryValidStatus(t *testing.T) {
+	for _, s := range allStatuses {
+		if s.Label() == "" {
+			t.Errorf("Status(%q) is valid but has no Label()", s)
+		}
+	}
+}
+
+// allStatuses is every value Status.Valid accepts.
+var allStatuses = []order.Status{
+	order.StatusPendingPayment,
+	order.StatusPlaced,
+	order.StatusPaymentFailed,
+	order.StatusExpired,
+	order.StatusPacked,
+	order.StatusShipped,
+	order.StatusDelivered,
+	order.StatusCancelled,
+}
+
+func TestAllStatusesIsComplete(t *testing.T) {
+	for _, s := range allStatuses {
+		if !s.Valid() {
+			t.Errorf("allStatuses contains %q, which Valid() rejects", s)
+		}
+	}
+}
+
+// ─── Fulfilment ──────────────────────────────────────────────────────────────
+
+// allFulfilments is every value Fulfilment.Valid accepts, including the zero
+// value. Kept beside the transition tests so the exhaustive sweep below covers
+// the whole domain rather than the handful of pairs someone thought to write
+// down.
+var allFulfilments = []order.Fulfilment{
+	order.FulfilmentNone,
+	order.FulfilmentPacked,
+	order.FulfilmentInTransit,
+	order.FulfilmentShipped,
+}
+
+func TestFulfilmentValid(t *testing.T) {
+	tests := []struct {
+		in   order.Fulfilment
+		want bool
+	}{
+		// The zero value is a state — "not started" — not a missing value.
+		{order.FulfilmentNone, true},
+		{order.FulfilmentPacked, true},
+		{order.FulfilmentInTransit, true},
+		{order.FulfilmentShipped, true},
+		// No delivered value: nothing tells us a parcel arrived. No cancelled
+		// value: there is no cancellation and no refund.
+		{"delivered", false},
+		{"cancelled", false},
+		{"placed", false},
+		{"Processed", false}, // the displayed word is not the stored value
+		{"SHIPPED", false},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.in), func(t *testing.T) {
+			if got := tt.in.Valid(); got != tt.want {
+				t.Errorf("Fulfilment(%q).Valid() = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFulfilmentLabel(t *testing.T) {
+	// These exact words are the contract (roadmap.md §Admin orders); the
+	// storefront must reuse them rather than invent a second vocabulary.
+	tests := []struct {
+		in   order.Fulfilment
+		want string
+	}{
+		{order.FulfilmentNone, "Not started"},
+		{order.FulfilmentPacked, "Processed"},
+		{order.FulfilmentInTransit, "Transit"},
+		{order.FulfilmentShipped, "Shipped"},
+		{"nonsense", ""}, // no guess for an unrecognised value
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.in), func(t *testing.T) {
+			if got := tt.in.Label(); got != tt.want {
+				t.Errorf("Fulfilment(%q).Label() = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFulfilmentLabelCoversEveryValidValue fails if a state is added without a
+// label. Without it, a new state would silently serialise with an empty
+// fulfilmentLabel and show as a blank chip in the order book.
+func TestFulfilmentLabelCoversEveryValidValue(t *testing.T) {
+	for _, f := range allFulfilments {
+		if f.Label() == "" {
+			t.Errorf("Fulfilment(%q) is valid but has no Label()", f)
+		}
+	}
+}
+
+// TestCanFulfilExhaustively asserts every ordered pair over the whole domain —
+// 16 of them — against an explicit allow-list of three. A table of hand-picked
+// cases would prove the three legal moves work; only the sweep proves nothing
+// else does, which is the half that matters in a guard.
+func TestCanFulfilExhaustively(t *testing.T) {
+	type pair struct{ from, to order.Fulfilment }
+	allowed := map[pair]bool{
+		{order.FulfilmentNone, order.FulfilmentPacked}:       true,
+		{order.FulfilmentPacked, order.FulfilmentInTransit}:  true,
+		{order.FulfilmentInTransit, order.FulfilmentShipped}: true,
+	}
+
+	for _, from := range allFulfilments {
+		for _, to := range allFulfilments {
+			want := allowed[pair{from, to}]
+			if got := order.CanFulfil(from, to); got != want {
+				t.Errorf("CanFulfil(%q, %q) = %v, want %v", from, to, got, want)
+			}
+		}
+	}
+}
+
+func TestCanFulfilRejectsUnknownValues(t *testing.T) {
+	tests := []struct{ from, to order.Fulfilment }{
+		{"nonsense", order.FulfilmentPacked},
+		{order.FulfilmentPacked, "nonsense"},
+		{"delivered", order.FulfilmentShipped},
+		{order.FulfilmentShipped, "delivered"},
+		{order.FulfilmentNone, "cancelled"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.from)+"→"+string(tt.to), func(t *testing.T) {
+			if order.CanFulfil(tt.from, tt.to) {
+				t.Errorf("CanFulfil(%q, %q) = true, want false", tt.from, tt.to)
+			}
+		})
+	}
+}
+
+// TestCanFulfilRefusesSelfMoves pins that re-sending the state an order is
+// already in is refused rather than treated as a harmless no-op. A PATCH that
+// silently succeeded would tell an operator a parcel moved when nothing did.
+func TestCanFulfilRefusesSelfMoves(t *testing.T) {
+	for _, f := range allFulfilments {
+		if order.CanFulfil(f, f) {
+			t.Errorf("CanFulfil(%q, %q) = true, want false for a self-move", f, f)
+		}
+	}
+}
+
+func TestNextFulfilment(t *testing.T) {
+	tests := []struct {
+		from     order.Fulfilment
+		want     order.Fulfilment
+		wantMore bool
+	}{
+		{order.FulfilmentNone, order.FulfilmentPacked, true},
+		{order.FulfilmentPacked, order.FulfilmentInTransit, true},
+		{order.FulfilmentInTransit, order.FulfilmentShipped, true},
+		// Terminal: there is nothing after shipped, because nothing tells us a
+		// parcel arrived.
+		{order.FulfilmentShipped, order.FulfilmentNone, false},
+		{"nonsense", order.FulfilmentNone, false},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.from), func(t *testing.T) {
+			got, ok := order.NextFulfilment(tt.from)
+			if ok != tt.wantMore {
+				t.Errorf("ok = %v, want %v", ok, tt.wantMore)
+			}
+			if got != tt.want {
+				t.Errorf("next = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNextFulfilmentAgreesWithCanFulfil pins the two against each other, so a
+// 409 message can never name a step the guard would refuse.
+func TestNextFulfilmentAgreesWithCanFulfil(t *testing.T) {
+	for _, from := range allFulfilments {
+		next, ok := order.NextFulfilment(from)
+		for _, to := range allFulfilments {
+			want := ok && to == next
+			if got := order.CanFulfil(from, to); got != want {
+				t.Errorf("CanFulfil(%q,%q) = %v but NextFulfilment says %q/%v",
+					from, to, got, next, ok)
+			}
+		}
+	}
+}
+
+// TestCanFulfilNeverGoesBackwards pins the direction of travel independently of
+// the allow-list above, so a reordering of fulfilmentOrder that still satisfied
+// the sweep could not quietly permit un-shipping a parcel.
+func TestCanFulfilNeverGoesBackwards(t *testing.T) {
+	for i, to := range allFulfilments {
+		for _, from := range allFulfilments[i:] {
+			if order.CanFulfil(from, to) {
+				t.Errorf("CanFulfil(%q, %q) = true; fulfilment must only move forward", from, to)
+			}
+		}
 	}
 }
 
@@ -404,7 +640,7 @@ func TestTotalsValidate(t *testing.T) {
 	}{
 		{"valid", func(*order.Totals) {}, false},
 		{"valid with shipping", func(tot *order.Totals) {
-			*tot = order.Totals{MRPTotal: 30000, Subtotal: 20000, Savings: 10000, Shipping: 4900, Total: 24900}
+			*tot = order.Totals{MRPTotal: 30000, Subtotal: 20000, Savings: 10000, Shipping: 5000, Total: 25000}
 		}, false},
 		{"zero subtotal", func(tot *order.Totals) { tot.Subtotal = 0 }, true},
 		{"negative subtotal", func(tot *order.Totals) { tot.Subtotal = -1 }, true},
@@ -498,6 +734,44 @@ func TestOrderValidate(t *testing.T) {
 			o.Status = order.StatusCancelled
 			o.PlacedAt = nil
 		}, validPlacedOrder, true},
+
+		// ── Customer phone ───────────────────────────────────────────────────
+		// Absent is tolerated: orders written before the field existed are real
+		// purchases and must stay readable. A malformed value is not — a label
+		// printed with a mangled number is worse than one printed with none.
+		{"phone: absent", func(o *order.Order) { o.CustomerPhone = "" }, validPlacedOrder, false},
+		{"phone: ten digits", func(o *order.Order) { o.CustomerPhone = "9876543210" }, validPlacedOrder, false},
+		{"phone: too short", func(o *order.Order) { o.CustomerPhone = "98765" }, validPlacedOrder, true},
+		{"phone: country code", func(o *order.Order) { o.CustomerPhone = "+919876543210" }, validPlacedOrder, true},
+		{"phone: letters", func(o *order.Order) { o.CustomerPhone = "98765abcde" }, validPlacedOrder, true},
+
+		// ── Fulfilment ───────────────────────────────────────────────────────
+		// Absent is the normal case and must stay valid on every status —
+		// otherwise every order in the database before the split was invalid.
+		{"fulfilment: absent on a pending order", func(o *order.Order) {
+			o.Fulfilment = order.FulfilmentNone
+		}, validPendingOrder, false},
+		{"fulfilment: absent on a placed order", func(o *order.Order) {
+			o.Fulfilment = order.FulfilmentNone
+		}, validPlacedOrder, false},
+		{"fulfilment: packed on a placed order", func(o *order.Order) {
+			o.Fulfilment = order.FulfilmentPacked
+		}, validPlacedOrder, false},
+		{"fulfilment: shipped on a placed order", func(o *order.Order) {
+			o.Fulfilment = order.FulfilmentShipped
+		}, validPlacedOrder, false},
+		{"fulfilment: unknown value", func(o *order.Order) {
+			o.Fulfilment = "delivered"
+		}, validPlacedOrder, true},
+		// Fulfilment progress on an order nobody paid for would mean a parcel
+		// went out for free.
+		{"fulfilment: packed on a pending order", func(o *order.Order) {
+			o.Fulfilment = order.FulfilmentPacked
+		}, validPendingOrder, true},
+		{"fulfilment: packed on an expired order", func(o *order.Order) {
+			o.Status = order.StatusExpired
+			o.Fulfilment = order.FulfilmentPacked
+		}, validPendingOrder, true},
 
 		// ── Always-checked fields ────────────────────────────────────────────
 		{"bad order id", func(o *order.Order) { o.OrderID = "EFF-42" }, validPendingOrder, true},

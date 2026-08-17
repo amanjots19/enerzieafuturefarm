@@ -91,3 +91,49 @@ func (s *Service) TrustTiles(ctx context.Context) ([]TrustTile, error) {
 	}
 	return tiles, nil
 }
+
+// Writer is the write surface the AdminService needs. *Repository satisfies it;
+// tests substitute a stub.
+type Writer interface {
+	ListAll(ctx context.Context) ([]Product, error)
+	Get(ctx context.Context, id ID) (Product, error)
+	Create(ctx context.Context, p Product) error
+	Update(ctx context.Context, p Product) error
+	Retire(ctx context.Context, id ID) error
+}
+
+// AdminService holds the catalogue admin business rules.
+type AdminService struct {
+	repo Writer
+}
+
+// NewAdminService builds an AdminService over the given writer.
+func NewAdminService(repo Writer) *AdminService {
+	return &AdminService{repo: repo}
+}
+
+// Products returns every product including retired ones, ordered by position.
+func (s *AdminService) Products(ctx context.Context) ([]Product, error) {
+	return s.repo.ListAll(ctx)
+}
+
+// Product returns one product by id, retired or not.
+func (s *AdminService) Product(ctx context.Context, id ID) (Product, error) {
+	return s.repo.Get(ctx, id)
+}
+
+// Create inserts a new product. The caller must have already validated p.
+func (s *AdminService) Create(ctx context.Context, p Product) error {
+	return s.repo.Create(ctx, p)
+}
+
+// Update replaces all editable fields of an existing product. The caller must
+// have already validated p.
+func (s *AdminService) Update(ctx context.Context, p Product) error {
+	return s.repo.Update(ctx, p)
+}
+
+// Retire sets active:false on the product with the given id.
+func (s *AdminService) Retire(ctx context.Context, id ID) error {
+	return s.repo.Retire(ctx, id)
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/enerzia/enerzia-be/internal/admin"
 	"github.com/enerzia/enerzia-be/internal/auth"
 	"github.com/enerzia/enerzia-be/internal/cart"
 	"github.com/enerzia/enerzia-be/internal/catalogue"
@@ -24,15 +25,18 @@ const APIPrefix = "/api/v1"
 // Deps are the collaborators the router needs. Everything is injected so tests
 // can substitute fakes; there is no package-level state.
 type Deps struct {
-	Config    config.Config
-	Mongo     health.Pinger
-	Catalogue *catalogue.Handler
-	Auth      *auth.Handler
-	Cart      *cart.Handler
-	Order     *order.Handler
-	Logger    *slog.Logger
-	Version   string
-	Started   time.Time
+	Config         config.Config
+	Mongo          health.Pinger
+	Catalogue      *catalogue.Handler
+	Auth           *auth.Handler
+	Cart           *cart.Handler
+	Order          *order.Handler
+	Admin          *admin.Handler
+	AdminCatalogue *catalogue.AdminHandler
+	AdminOrder     *order.AdminHandler
+	Logger         *slog.Logger
+	Version        string
+	Started        time.Time
 }
 
 // New builds the fully wired HTTP handler.
@@ -78,6 +82,15 @@ func New(deps Deps) http.Handler {
 		deps.Order.Register(api)
 		// Webhook sits outside /api/v1 and outside auth — register on root.
 		deps.Order.RegisterWebhook(r)
+	}
+	if deps.Admin != nil {
+		deps.Admin.Register(api)
+	}
+	if deps.AdminCatalogue != nil {
+		deps.AdminCatalogue.Register(api)
+	}
+	if deps.AdminOrder != nil {
+		deps.AdminOrder.Register(api)
 	}
 
 	// CORS wraps the entire mux as the outermost layer so that every response —

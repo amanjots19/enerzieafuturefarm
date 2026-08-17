@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/enerzia/enerzia-be/internal/auth"
 	"github.com/enerzia/enerzia-be/internal/cart"
 	"github.com/enerzia/enerzia-be/internal/catalogue"
+	"github.com/enerzia/enerzia-be/internal/email"
 	"github.com/enerzia/enerzia-be/internal/order"
 	"github.com/enerzia/enerzia-be/internal/razorpay"
 )
@@ -39,6 +42,18 @@ type fakeStore struct {
 	markPlacedErr    error
 	markFailModified bool
 	markFailErr      error
+
+	fillModified bool
+	fillErr      error
+	filled       []order.Payment
+}
+
+func (f *fakeStore) FillPaymentDetail(_ context.Context, _ string, p order.Payment, _ time.Time) (bool, error) {
+	if f.fillErr != nil {
+		return false, f.fillErr
+	}
+	f.filled = append(f.filled, p)
+	return f.fillModified, nil
 }
 
 func (f *fakeStore) Create(_ context.Context, o order.Order) error {
@@ -120,11 +135,55 @@ func (f *fakeLiner) Lines(_ context.Context, _ bson.ObjectID) ([]cart.Line, erro
 // fakeAddr is an AddressResolver with a single address.
 type fakeAddr struct {
 	addr auth.Address
-	err  error
+	// accountPhone is the shopper's OTP-proven number, used only when the
+	// address carries none of its own.
+	accountPhone string
+	err          error
 }
 
-func (f *fakeAddr) AddressFor(_ context.Context, _ bson.ObjectID, _ *bson.ObjectID) (auth.Address, error) {
-	return f.addr, f.err
+func (f *fakeAddr) AddressFor(_ context.Context, _ bson.ObjectID, _ *bson.ObjectID) (auth.Address, string, error) {
+	return f.addr, f.accountPhone, f.err
+}
+
+// recordingNotifier captures sent messages. Send may run on another goroutine,
+// so it is mutex-guarded and exposes a wait.
+type recordingNotifier struct {
+	mu   sync.Mutex
+	sent []email.Message
+	err  error
+	done chan struct{}
+}
+
+func newRecordingNotifier() *recordingNotifier {
+	return &recordingNotifier{done: make(chan struct{}, 8)}
+}
+
+func (n *recordingNotifier) Send(_ context.Context, m email.Message) error {
+	n.mu.Lock()
+	if n.err == nil {
+		n.sent = append(n.sent, m)
+	}
+	n.mu.Unlock()
+	n.done <- struct{}{}
+	return n.err
+}
+
+func (n *recordingNotifier) count() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.sent)
+}
+
+// waitForSend blocks until one Send happens, or fails the test. The send is
+// deliberately detached from the request, so a test cannot assume it has
+// already run.
+func (n *recordingNotifier) waitForSend(t *testing.T) {
+	t.Helper()
+	select {
+	case <-n.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no confirmation was sent within 2s")
+	}
 }
 
 // fakeStock tracks TakeStock calls and can inject failures.
@@ -184,6 +243,7 @@ var (
 		ID:        bson.NewObjectID(),
 		Name:      "Test User",
 		Email:     "test@example.com",
+		Phone:     "9811111111",
 		Line1:     "123 Main Street",
 		City:      "Mumbai",
 		State:     "Maharashtra",
@@ -316,6 +376,59 @@ func TestOpenCheckout_ExpiresOldOrder(t *testing.T) {
 	}
 }
 
+// TestOpenCheckoutFreezesTheDeliveryPhone covers the whole fallback rule in one
+// table. The address's own number is the delivery contact — for a gift that is
+// the recipient, not the buyer — and the account number is used only when the
+// address predates the per-address phone field.
+func TestOpenCheckoutFreezesTheDeliveryPhone(t *testing.T) {
+	tests := []struct {
+		name         string
+		addrPhone    string
+		accountPhone string
+		want         string
+	}{
+		{
+			name:      "the address's own number wins",
+			addrPhone: "9811111111", accountPhone: "9700000000", want: "9811111111",
+		},
+		{
+			name: "an address saved before the field falls back to the account",
+			// The buyer's own number is a worse guess than the recipient's, but
+			// it is far better than a parcel with no contact at all.
+			addrPhone: "", accountPhone: "9700000000", want: "9700000000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr := svcAddress
+			addr.Phone = tt.addrPhone
+			store := &fakeStore{}
+			gw := &fakeGateway{rzpOrder: razorpay.Order{ID: "order_x", Amount: 49900, Currency: "INR"}}
+
+			svc := newSvc(t, store,
+				&fakeLiner{lines: []cart.Line{goodLine("Powder", 49900, 1)}},
+				&fakeAddr{addr: addr, accountPhone: tt.accountPhone},
+				newFakeStock(), gw)
+
+			if _, err := svc.OpenCheckout(t.Context(), testUser, nil); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(store.created) != 1 {
+				t.Fatalf("created %d orders, want 1", len(store.created))
+			}
+			if got := store.created[0].CustomerPhone; got != tt.want {
+				t.Errorf("CustomerPhone = %q, want %q", got, tt.want)
+			}
+			// The address snapshot keeps its own value untouched either way —
+			// the frozen contact is a separate field, not a rewrite.
+			if got := store.created[0].ShippingAddress.Phone; got != tt.addrPhone {
+				t.Errorf("ShippingAddress.Phone = %q, want %q (unmodified)", got, tt.addrPhone)
+			}
+		})
+	}
+}
+
 func TestOpenCheckout_StockUnavailable(t *testing.T) {
 	lines := []cart.Line{
 		goodLine("Powder", 49900, 2),
@@ -413,6 +526,10 @@ func TestOpenCheckout_IDCollisionRetry(t *testing.T) {
 type retryStore struct {
 	failN int
 	calls int
+}
+
+func (r *retryStore) FillPaymentDetail(_ context.Context, _ string, _ order.Payment, _ time.Time) (bool, error) {
+	return false, nil
 }
 
 func (r *retryStore) Create(_ context.Context, _ order.Order) error {
@@ -1209,5 +1326,156 @@ func TestHandleWebhook_FailedNotModified(t *testing.T) {
 	}
 	if stock.returned != 0 {
 		t.Errorf("returned = %d, want 0 (no stock release when guard rejected)", stock.returned)
+	}
+}
+
+/* ------------------------------------------- confirmation email on capture */
+
+// newSvcWithNotifier builds a service wired to a recording notifier.
+func newSvcWithNotifier(t *testing.T, store order.Store, n order.Notifier) *order.Service {
+	t.Helper()
+	return order.NewService(order.ServiceConfig{
+		Repo:          store,
+		Cart:          &fakeLiner{},
+		Auth:          &fakeAddr{addr: svcAddress},
+		Catalogue:     newFakeStock(),
+		Gateway:       &fakeGateway{},
+		Events:        &fakeEventStore{},
+		RazorpayKeyID: "rzp_test_KEY",
+		Notifier:      n,
+		Logger:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Now:           func() time.Time { return fixedNow },
+	})
+}
+
+// pendingOrderForCapture is an order awaiting payment, ready for the callback.
+func pendingOrderForCapture() order.Order {
+	return order.Order{
+		OrderID: "EFF-483413",
+		UserID:  testUser,
+		Status:  order.StatusPendingPayment,
+		Lines: []order.Line{{
+			ProductID: "powder-100g", Name: "Pure Spirulina Powder - 100 g",
+			Form: catalogue.FormPowder, UnitPrice: 20000, UnitMrp: 25000,
+			Qty: 1, LineTotal: 20000,
+		}},
+		Totals: order.Totals{
+			MRPTotal: 25000, Subtotal: 20000, Savings: 5000, Shipping: 5000, Total: 25000,
+		},
+		Payment:         order.NewPendingPayment("order_Pk9", 25000),
+		ShippingAddress: svcAddress,
+		CustomerPhone:   "9811111111",
+		CreatedAt:       fixedNow,
+		ExpiresAt:       fixedNow.Add(15 * time.Minute),
+		UpdatedAt:       fixedNow,
+	}
+}
+
+func TestConfirmPaymentSendsTheConfirmation(t *testing.T) {
+	store := &fakeStore{byIDOrder: pendingOrderForCapture(), markModified: true}
+	n := newRecordingNotifier()
+	svc := newSvcWithNotifier(t, store, n)
+
+	if _, err := svc.ConfirmPayment(t.Context(), testUser, "EFF-483413",
+		"order_Pk9", "pay_Pk9", "sig"); err != nil {
+		t.Fatalf("ConfirmPayment() error = %v", err)
+	}
+
+	n.waitForSend(t)
+	if got := n.count(); got != 1 {
+		t.Fatalf("%d confirmations sent, want 1", got)
+	}
+
+	n.mu.Lock()
+	msg := n.sent[0]
+	n.mu.Unlock()
+
+	if msg.To != svcAddress.Email {
+		t.Errorf("To = %q, want the order's email", msg.To)
+	}
+	// The email must describe the order as PLACED. Built from the pre-transition
+	// read, it would tell a paying customer their order is still awaiting
+	// payment.
+	if !strings.Contains(msg.Subject, "EFF-483413") {
+		t.Errorf("Subject = %q", msg.Subject)
+	}
+	if !strings.Contains(msg.TextBody, "confirmed") {
+		t.Error("the body does not say the order is confirmed")
+	}
+}
+
+// TestConfirmPaymentDoesNotSendWhenTheWebhookWonTheRace is the exactly-once
+// pin. modified == false means another path already placed this order and
+// already sent the email; sending again would double-mail the customer.
+func TestConfirmPaymentDoesNotSendWhenTheWebhookWonTheRace(t *testing.T) {
+	store := &fakeStore{
+		byIDOrder:    pendingOrderForCapture(),
+		markModified: false, // the webhook got there first
+	}
+	n := newRecordingNotifier()
+	svc := newSvcWithNotifier(t, store, n)
+
+	if _, err := svc.ConfirmPayment(t.Context(), testUser, "EFF-483413",
+		"order_Pk9", "pay_Pk9", "sig"); err != nil {
+		t.Fatalf("ConfirmPayment() error = %v", err)
+	}
+
+	// Nothing to wait for; give any stray goroutine a moment to misbehave.
+	time.Sleep(150 * time.Millisecond)
+	if got := n.count(); got != 0 {
+		t.Errorf("%d confirmations sent, want 0 — the other path already mailed", got)
+	}
+}
+
+// TestConfirmPaymentSucceedsWhenMailFails is the important one. The money has
+// already moved and the order is already placed; a broken SMTP host must not
+// turn that into a failed request.
+func TestConfirmPaymentSucceedsWhenMailFails(t *testing.T) {
+	store := &fakeStore{byIDOrder: pendingOrderForCapture(), markModified: true}
+	n := newRecordingNotifier()
+	n.err = errors.New("smtp: connection refused")
+	svc := newSvcWithNotifier(t, store, n)
+
+	got, err := svc.ConfirmPayment(t.Context(), testUser, "EFF-483413",
+		"order_Pk9", "pay_Pk9", "sig")
+	if err != nil {
+		t.Fatalf("ConfirmPayment() failed because mail failed: %v", err)
+	}
+	if got.Status != order.StatusPlaced {
+		t.Errorf("status = %q, want placed", got.Status)
+	}
+	n.waitForSend(t) // it was attempted
+}
+
+func TestConfirmPaymentWithoutANotifier(t *testing.T) {
+	// Nil notifier is the unconfigured case and must not panic.
+	store := &fakeStore{byIDOrder: pendingOrderForCapture(), markModified: true}
+	svc := newSvcWithNotifier(t, store, nil)
+
+	if _, err := svc.ConfirmPayment(t.Context(), testUser, "EFF-483413",
+		"order_Pk9", "pay_Pk9", "sig"); err != nil {
+		t.Fatalf("ConfirmPayment() error = %v", err)
+	}
+}
+
+func TestConfirmPaymentWithNoEmailOnTheOrder(t *testing.T) {
+	// Nothing to send to. The order must still place cleanly.
+	o := pendingOrderForCapture()
+	o.ShippingAddress.Email = ""
+	store := &fakeStore{byIDOrder: o, markModified: true}
+	n := newRecordingNotifier()
+	svc := newSvcWithNotifier(t, store, n)
+
+	got, err := svc.ConfirmPayment(t.Context(), testUser, "EFF-483413",
+		"order_Pk9", "pay_Pk9", "sig")
+	if err != nil {
+		t.Fatalf("ConfirmPayment() error = %v", err)
+	}
+	if got.Status != order.StatusPlaced {
+		t.Errorf("status = %q, want placed", got.Status)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if n.count() != 0 {
+		t.Error("a confirmation was sent with no recipient")
 	}
 }

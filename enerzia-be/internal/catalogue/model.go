@@ -61,6 +61,20 @@ func ParseFilter(raw string) (form Form, filtered, ok bool) {
 	}
 }
 
+// MaxImages is the maximum number of photographs a product may carry.
+const MaxImages = 5
+
+// Image is one product photograph stored as a Cloudinary URL.
+//
+// URL and PublicID are both required: publicId is the only handle by which an
+// asset can later be deleted or transformed (schema.md §products). Alt is
+// optional — most product photographs are self-explanatory.
+type Image struct {
+	URL      string `bson:"url"           json:"url"`
+	PublicID string `bson:"publicId"      json:"publicId"`
+	Alt      string `bson:"alt,omitempty" json:"alt,omitempty"`
+}
+
 // ID identifies a product, e.g. "tablets-120". Human-readable because it
 // appears in URLs and in cart lines, and because there are nine of them.
 type ID string
@@ -86,6 +100,10 @@ type Product struct {
 	// Position orders the whole grid, so siblings sit together without the
 	// client sorting.
 	Position int `bson:"position"`
+	// Images holds up to MaxImages Cloudinary photographs in display order.
+	// Index 0 is the primary shot. An empty or nil slice means no photographs
+	// have been uploaded yet; grad is the fallback in that case.
+	Images []Image `bson:"images"`
 
 	MRP   int64 `bson:"mrp"`
 	Price int64 `bson:"price"`

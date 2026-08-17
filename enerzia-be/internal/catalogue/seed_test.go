@@ -177,7 +177,7 @@ func TestSeedTrustTiles(t *testing.T) {
 		t.Fatalf("%d trust tiles, want 4", len(tiles))
 	}
 
-	wantBig := []string{"60%+", "FSSAI", "0", "48 hrs"}
+	wantBig := []string{"62%+", "FSSAI", "0", "48 hrs"}
 	for i, w := range wantBig {
 		if tiles[i].Big != w {
 			t.Errorf("tile %d big = %q, want %q", i, tiles[i].Big, w)

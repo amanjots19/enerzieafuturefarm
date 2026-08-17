@@ -26,6 +26,15 @@ const (
 	fieldRazorpayOrderID   = "payment.razorpayOrderId"
 	fieldRazorpayPaymentID = "payment.razorpayPaymentId"
 
+	// Payment detail sub-fields, written on their own by FillPaymentDetail.
+	fieldPaymentMethod  = "payment.method"
+	fieldPaymentLabel   = "payment.label"
+	fieldPaymentLast4   = "payment.last4"
+	fieldPaymentNetwork = "payment.network"
+	fieldPaymentBank    = "payment.bank"
+	fieldPaymentWallet  = "payment.wallet"
+	fieldPaymentVPA     = "payment.vpa"
+
 	bsonOpSet = "$set" // used in every update to avoid 4× goconst lint hits
 )
 
@@ -124,15 +133,19 @@ func (r *Repository) ByOrderID(ctx context.Context, userID bson.ObjectID, orderI
 	return o, nil
 }
 
-// ListForUser returns all non-expired orders for a user, sorted by createdAt
-// descending. Sorted on createdAt, not placedAt: a pending_payment order has
-// no placedAt yet, and sorting on null would scatter live reservations through
-// the history. No orders is []Order{}, nil — never nil and never an error.
+// ListForUser returns only paid orders for a user (placed, packed, shipped,
+// delivered, cancelled), sorted by createdAt descending. pending_payment,
+// payment_failed, and expired orders are excluded. The list is an explicit $in
+// rather than a $ne so a status added later is excluded until someone adds it
+// here on purpose. Fulfilment is deliberately not part of this query: it is a
+// separate field that no shopper-facing endpoint reads. Sorted on createdAt, not
+// placedAt: consistent ordering across all status values without null scatter.
+// No orders is []Order{}, nil — never nil and never an error.
 func (r *Repository) ListForUser(ctx context.Context, userID bson.ObjectID) ([]Order, error) {
 	cursor, err := r.col.Find(ctx,
 		bson.D{
 			{Key: fieldUserID, Value: userID},
-			{Key: fieldStatus, Value: bson.D{{Key: "$ne", Value: string(StatusExpired)}}},
+			{Key: fieldStatus, Value: bson.D{{Key: opIn, Value: paidStatusValues()}}},
 		},
 		options.Find().SetSort(bson.D{{Key: fieldCreatedAt, Value: -1}}),
 	)
@@ -217,6 +230,50 @@ func (r *Repository) MarkPlaced(ctx context.Context, orderID string, payment Pay
 	)
 	if err != nil {
 		return false, fmt.Errorf("order: mark placed: %w", err)
+	}
+	return res.ModifiedCount == 1, nil
+}
+
+// FillPaymentDetail stamps how an order was paid for onto an order that is
+// ALREADY placed.
+//
+// This exists because of an asymmetry between the two capture paths. Razorpay's
+// browser callback returns only an order id, a payment id and a signature — it
+// genuinely does not know whether the shopper used netbanking or UPI. Only the
+// webhook carries that. But the callback is synchronous with the browser and
+// almost always wins the race to MarkPlaced, whose filter requires
+// status: "pending_payment"; the webhook's richer update then matches nothing
+// and its method is discarded. The result was every order placed with no
+// payment method at all, and a receipt that cannot say how it was paid.
+//
+// The filter requires the method to still be empty, so this is idempotent and
+// can never overwrite a method that was recorded correctly. Only the detail
+// sub-fields and updatedAt are written — never status, never placedAt, never
+// the amount, and never the callback's stored signature.
+//
+// Returns (false, nil) when there was nothing to fill, which is the normal case
+// once an order already has its method.
+func (r *Repository) FillPaymentDetail(ctx context.Context, orderID string, p Payment, now time.Time) (bool, error) {
+	res, err := r.col.UpdateOne(ctx,
+		bson.D{
+			{Key: fieldOrderID, Value: orderID},
+			{Key: fieldStatus, Value: string(StatusPlaced)},
+			// Matches a missing key, an explicit null, and an empty string.
+			{Key: fieldPaymentMethod, Value: bson.D{{Key: opIn, Value: bson.A{nil, ""}}}},
+		},
+		bson.D{{Key: bsonOpSet, Value: bson.D{
+			{Key: fieldPaymentMethod, Value: string(p.Method)},
+			{Key: fieldPaymentLabel, Value: p.Label},
+			{Key: fieldPaymentLast4, Value: p.Last4},
+			{Key: fieldPaymentNetwork, Value: p.Network},
+			{Key: fieldPaymentBank, Value: p.Bank},
+			{Key: fieldPaymentWallet, Value: p.Wallet},
+			{Key: fieldPaymentVPA, Value: p.VPA},
+			{Key: fieldUpdatedAt, Value: now},
+		}}},
+	)
+	if err != nil {
+		return false, fmt.Errorf("order: fill payment detail: %w", err)
 	}
 	return res.ModifiedCount == 1, nil
 }
@@ -319,7 +376,7 @@ func (r *Repository) MarkExpired(ctx context.Context, orderID string, now time.T
 	return res.ModifiedCount == 1, nil
 }
 
-// EnsureIndexes creates the six indexes schema.md §orders specifies. Four of
+// EnsureIndexes creates the seven indexes schema.md §orders specifies. Four of
 // them are correctness constraints, not optimisations — each one makes a
 // specific race safe rather than merely fast. See schema.md §Index creation.
 func (r *Repository) EnsureIndexes(ctx context.Context) error {
@@ -379,6 +436,13 @@ func (r *Repository) EnsureIndexes(ctx context.Context) error {
 				SetPartialFilterExpression(bson.D{
 					{Key: fieldStatus, Value: string(StatusPendingPayment)},
 				}),
+		},
+		// 7. Admin order book: filters by status and pages backwards on
+		//    createdAt. userId_1_createdAt_-1 cannot serve it — the admin query
+		//    has no userId — so without this every page is a collection scan.
+		{
+			Keys:    bson.D{{Key: fieldStatus, Value: 1}, {Key: fieldCreatedAt, Value: -1}},
+			Options: options.Index().SetName("status_1_createdAt_-1"),
 		},
 	})
 	if err != nil {

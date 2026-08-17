@@ -1,12 +1,17 @@
 package cart
 
-// Delivery pricing, in paise. product.md §4: free over ₹499, otherwise ₹49.
+// Delivery pricing, in paise. product.md §4: free over ₹499, otherwise ₹50.
+//
+// These two constants are the only place the delivery rule is expressed. The
+// handler, the order snapshot and the storefront all read the computed result
+// rather than re-deriving it, so changing the rule here changes it everywhere
+// — do not copy either value into a caller.
 const (
 	// FreeShippingThreshold is the subtotal at or above which delivery is
 	// free. ₹499.
 	FreeShippingThreshold int64 = 49900
-	// ShippingFee applies below the threshold. ₹49.
-	ShippingFee int64 = 4900
+	// ShippingFee applies below the threshold. ₹50.
+	ShippingFee int64 = 5000
 )
 
 // ComputeTotals sums a resolved cart.
@@ -34,7 +39,7 @@ func ComputeTotals(lines []Line) Totals {
 
 // shippingFor returns the delivery charge for a subtotal.
 //
-// An empty cart is free rather than ₹49: charging delivery on nothing would
+// An empty cart is free rather than ₹50: charging delivery on nothing would
 // show a total on an empty cart.
 func shippingFor(subtotal int64) int64 {
 	if subtotal == 0 || subtotal >= FreeShippingThreshold {

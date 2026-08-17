@@ -531,6 +531,48 @@ func TestSeedPreservesStockOnReSeed(t *testing.T) {
 	}
 }
 
+func TestSeedDoesNotWriteImagesToSet(t *testing.T) {
+	// images must NOT be in $set (a re-seed would wipe uploaded photographs)
+	// and MUST be in $setOnInsert (so a freshly seeded product has the field).
+	repo, fake := newRepo(t)
+
+	if err := repo.Seed(t.Context(), catalogue.SeedProducts()[:1], nil); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+
+	// Find the product update (not the trust tile update).
+	var productUpdate bson.Raw
+	for _, r := range fake.Requests() {
+		if r.Command != "update" {
+			continue
+		}
+		q := r.Sequence("updates")[0].Lookup("q").Document()
+		if q.Lookup("_id").StringValue() != "trust" {
+			productUpdate = r.Sequence("updates")[0]
+			break
+		}
+	}
+	if productUpdate == nil {
+		t.Fatal("no product update command was sent")
+	}
+
+	// images must not be under $set — that would wipe photographs on re-seed.
+	set := productUpdate.Lookup("u").Document().Lookup("$set").Document()
+	if _, err := set.LookupErr("images"); err == nil {
+		t.Error("images must NOT appear in $set — a re-seed would wipe uploaded photographs")
+	}
+
+	// images must be under $setOnInsert — a freshly inserted product needs the
+	// field present, not absent, so clients never encounter a missing key.
+	onInsert, err := productUpdate.Lookup("u").Document().LookupErr("$setOnInsert")
+	if err != nil {
+		t.Fatal("$setOnInsert is missing from the product update")
+	}
+	if _, err := onInsert.Document().LookupErr("images"); err != nil {
+		t.Error("images must appear in $setOnInsert so a freshly seeded product has the field")
+	}
+}
+
 func TestSeedRejectsInvalidProductsBeforeWriting(t *testing.T) {
 	// A seed run must not be how bad pricing reaches the database.
 	repo, fake := newRepo(t)

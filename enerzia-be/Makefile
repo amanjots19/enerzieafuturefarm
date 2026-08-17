@@ -85,6 +85,10 @@ run: ## Run the API locally (reads .env)
 seed: ## Load the catalogue into MongoDB (idempotent; reads .env)
 	@set -a && [ -f .env ] && . ./.env; set +a; go run ./cmd/seed
 
+.PHONY: admin-password
+admin-password: ## Generate a bcrypt hash for ADMIN_PASSWORD_HASH (reads password from stdin)
+	@go run ./cmd/adminpass
+
 .PHONY: build
 build: ## Build the API binary into bin/
 	go build -ldflags "-X main.version=$$(git rev-parse --short HEAD 2>/dev/null || echo dev)" \

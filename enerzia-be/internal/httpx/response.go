@@ -24,6 +24,10 @@ const (
 	CodeGatewayError ErrorCode = "GATEWAY_ERROR"
 	// CodeMethodNotAllowed is returned for a known path with the wrong verb.
 	CodeMethodNotAllowed ErrorCode = "METHOD_NOT_ALLOWED"
+	// CodeUnavailable is returned when a feature is switched off by missing
+	// configuration rather than broken by a fault. Distinct from INTERNAL so an
+	// operator can tell "nobody set this up" from "something crashed".
+	CodeUnavailable ErrorCode = "UNAVAILABLE"
 )
 
 // statusFor maps each code to its HTTP status, keeping the two from drifting
@@ -38,6 +42,7 @@ var statusFor = map[ErrorCode]int{
 	CodeInternal:         http.StatusInternalServerError,
 	CodeGatewayError:     http.StatusBadGateway,
 	CodeMethodNotAllowed: http.StatusMethodNotAllowed,
+	CodeUnavailable:      http.StatusServiceUnavailable,
 }
 
 // StatusFor returns the HTTP status for a code, defaulting to 500 for a code

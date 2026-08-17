@@ -66,10 +66,19 @@ type Address struct {
 	Label string        `bson:"label,omitempty" json:"label,omitempty"`
 	Name  string        `bson:"name"  json:"name"`
 	Email string        `bson:"email" json:"email"`
-	Line1 string        `bson:"line1" json:"line1"`
-	City  string        `bson:"city"  json:"city"`
-	State string        `bson:"state" json:"state"`
-	Pin   string        `bson:"pin"   json:"pin"`
+	// Phone is the delivery contact for THIS address — the number a courier
+	// calls when they cannot find the door. It is deliberately per-address and
+	// not the account's sign-in number: a shopper sending a gift to a relative
+	// needs the recipient reachable, not themselves.
+	//
+	// omitempty because addresses saved before the field existed have none.
+	// Those stay readable and usable; the checkout falls back to the account
+	// number rather than blocking a shopper on a field they never saw.
+	Phone string `bson:"phone,omitempty" json:"phone,omitempty"`
+	Line1 string `bson:"line1" json:"line1"`
+	City  string `bson:"city"  json:"city"`
+	State string `bson:"state" json:"state"`
+	Pin   string `bson:"pin"   json:"pin"`
 	// IsDefault marks the address pre-selected at checkout. Exactly one entry
 	// carries it whenever the list is non-empty.
 	IsDefault bool `bson:"isDefault" json:"isDefault"`

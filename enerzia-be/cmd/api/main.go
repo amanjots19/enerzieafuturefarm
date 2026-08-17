@@ -11,10 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/enerzia/enerzia-be/internal/admin"
 	"github.com/enerzia/enerzia-be/internal/auth"
 	"github.com/enerzia/enerzia-be/internal/cart"
 	"github.com/enerzia/enerzia-be/internal/catalogue"
+	"github.com/enerzia/enerzia-be/internal/cloudinary"
 	"github.com/enerzia/enerzia-be/internal/config"
+	"github.com/enerzia/enerzia-be/internal/email"
 	"github.com/enerzia/enerzia-be/internal/mongodb"
 	"github.com/enerzia/enerzia-be/internal/msg91"
 	"github.com/enerzia/enerzia-be/internal/order"
@@ -109,10 +112,26 @@ func run(logger *slog.Logger) error {
 		gateway = razorpay.NewClient(cfg.RazorpayKeyID, cfg.RazorpayKeySecret, cfg.RazorpayWebhookSecret)
 	}
 
+	// Transactional mail: required for nothing, optional everywhere. An empty
+	// SMTP_HOST selects Unconfigured, which refuses every send — order
+	// confirmations are simply not sent and nothing else changes.
+	var mailer email.Sender = email.Unconfigured{}
+	if cfg.SMTPConfigured() {
+		mailer = email.NewSMTPSender(email.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			FromMail: cfg.SMTPFromMail,
+			FromName: cfg.SMTPFromName,
+		})
+	}
+
 	orderService := order.NewService(order.ServiceConfig{
 		Repo:          orderRepo,
 		Cart:          cartService,
 		CartClearer:   cartService,
+		Notifier:      mailer,
 		Auth:          authService,
 		Catalogue:     catalogueRepo,
 		Gateway:       gateway,
@@ -129,18 +148,60 @@ func run(logger *slog.Logger) error {
 	})
 	go sweeper.Run(ctx, cfg.SweeperInterval)
 
+	// Cloudinary signer: required in production, optional elsewhere.
+	// An empty cloud name selects Unconfigured, which returns 500 on every
+	// signing call rather than silently issuing a valid-looking empty signature.
+	var cloudinarySigner cloudinary.Signer = cloudinary.Unconfigured{}
+	if cfg.CloudinaryCloudName != "" {
+		cloudinarySigner = cloudinary.NewClient(
+			cfg.CloudinaryCloudName,
+			cfg.CloudinaryAPIKey,
+			cfg.CloudinaryAPISecret,
+			cfg.CloudinaryFolder,
+		)
+	}
+
+	// Admin service. The token issuer uses the same JWT secret as the shopper
+	// issuer; the issuers ("enerzia-admin" vs "enerzia-api") keep them distinct.
+	adminTokens := admin.NewTokenIssuer([]byte(cfg.JWTSecret), admin.TokenTTL)
+	adminSvc := admin.NewService(admin.ServiceConfig{
+		Email:        cfg.AdminEmail,
+		PasswordHash: cfg.AdminPasswordHash,
+		Tokens:       adminTokens,
+		Limiter:      admin.NewLimiter(),
+	})
+
+	// Log whether admin sign-in and Cloudinary are available — booleans only.
+	// An operator staring at a 401 or 500 needs to know whether the server has
+	// credentials at all. Secrets and email addresses are never logged here.
+	logger.Info("admin configured",
+		slog.Bool("signIn", cfg.AdminEmail != ""),
+		slog.Bool("cloudinary", cfg.CloudinaryCloudName != ""),
+		slog.Bool("mail", cfg.SMTPConfigured()),
+	)
+
+	adminHandler := admin.NewHandler(adminSvc, logger).WithCloudinary(cloudinarySigner, time.Now)
+	adminCatalogueHandler := catalogue.NewAdminHandler(
+		catalogue.NewAdminService(catalogueRepo),
+		adminSvc,
+		logger,
+	)
+
 	srv := &http.Server{
 		Addr: cfg.Addr(),
 		Handler: server.New(server.Deps{
-			Config:    cfg,
-			Mongo:     mongoClient,
-			Catalogue: catalogue.NewHandler(catalogue.NewService(catalogueRepo), logger),
-			Auth:      auth.NewHandler(authService, logger),
-			Cart:      cart.NewHandler(cartService, authService, logger),
-			Order:     order.NewHandler(orderService, authService, logger),
-			Logger:    logger,
-			Version:   version,
-			Started:   started,
+			Config:         cfg,
+			Mongo:          mongoClient,
+			Catalogue:      catalogue.NewHandler(catalogue.NewService(catalogueRepo), logger),
+			Auth:           auth.NewHandler(authService, logger),
+			Cart:           cart.NewHandler(cartService, authService, logger),
+			Order:          order.NewHandler(orderService, authService, logger),
+			Admin:          adminHandler,
+			AdminCatalogue: adminCatalogueHandler,
+			AdminOrder:     order.NewAdminHandler(orderRepo, adminSvc, logger, cfg.AppEnv, cfg.ShipFrom),
+			Logger:         logger,
+			Version:        version,
+			Started:        started,
 		}),
 		ReadHeaderTimeout: cfg.ReadTimeout,
 		ReadTimeout:       cfg.ReadTimeout,

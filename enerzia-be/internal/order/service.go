@@ -12,6 +12,7 @@ import (
 	"github.com/enerzia/enerzia-be/internal/auth"
 	"github.com/enerzia/enerzia-be/internal/cart"
 	"github.com/enerzia/enerzia-be/internal/catalogue"
+	"github.com/enerzia/enerzia-be/internal/email"
 	"github.com/enerzia/enerzia-be/internal/razorpay"
 )
 
@@ -71,6 +72,7 @@ type Store interface {
 	ListForUser(ctx context.Context, userID bson.ObjectID) ([]Order, error)
 	ByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (Order, error)
 	MarkPlaced(ctx context.Context, orderID string, payment Payment, placedAt, now time.Time) (bool, error)
+	FillPaymentDetail(ctx context.Context, orderID string, payment Payment, now time.Time) (bool, error)
 	MarkPaymentFailed(ctx context.Context, orderID string, payment Payment, now time.Time) (bool, error)
 	ExpirePendingForUser(ctx context.Context, userID bson.ObjectID, now time.Time) (Order, bool, error)
 	SetRazorpayOrderID(ctx context.Context, orderID string, razorpayOrderID string) error
@@ -88,9 +90,20 @@ type CartClearer interface {
 	Clear(ctx context.Context, userID bson.ObjectID) (cart.View, error)
 }
 
+// Notifier delivers a customer-facing message. email.Sender satisfies it.
+//
+// Declared here rather than imported as email.Sender so this package states
+// what it needs rather than depending on a concrete transport, and so tests
+// substitute a recorder without an SMTP fake.
+type Notifier interface {
+	Send(ctx context.Context, m email.Message) error
+}
+
 // AddressResolver picks the shipping address for an order.
 type AddressResolver interface {
-	AddressFor(ctx context.Context, userID bson.ObjectID, addressID *bson.ObjectID) (auth.Address, error)
+	// AddressFor returns the shipping address and the shopper's account phone.
+	// The account phone is a fallback only: see deliveryPhone.
+	AddressFor(ctx context.Context, userID bson.ObjectID, addressID *bson.ObjectID) (auth.Address, string, error)
 }
 
 // StockKeeper atomically increments and decrements product stock.
@@ -101,9 +114,12 @@ type StockKeeper interface {
 
 // ServiceConfig groups the dependencies injected into Service.
 type ServiceConfig struct {
-	Repo          Store
-	Cart          CartLiner
-	CartClearer   CartClearer
+	Repo        Store
+	Cart        CartLiner
+	CartClearer CartClearer
+	// Notifier is optional. Nil, or email.Unconfigured, means confirmations are
+	// not sent and nothing else changes.
+	Notifier      Notifier
 	Auth          AddressResolver
 	Catalogue     StockKeeper
 	Gateway       razorpay.Gateway
@@ -120,6 +136,7 @@ type Service struct {
 	repo          Store
 	cart          CartLiner
 	cartClearer   CartClearer
+	notifier      Notifier
 	auth          AddressResolver
 	catalogue     StockKeeper
 	gateway       razorpay.Gateway
@@ -138,6 +155,7 @@ func NewService(cfg ServiceConfig) *Service {
 		repo:          cfg.Repo,
 		cart:          cfg.Cart,
 		cartClearer:   cfg.CartClearer,
+		notifier:      cfg.Notifier,
 		auth:          cfg.Auth,
 		catalogue:     cfg.Catalogue,
 		gateway:       cfg.Gateway,
@@ -146,6 +164,79 @@ func NewService(cfg ServiceConfig) *Service {
 		logger:        cfg.Logger,
 		now:           cfg.Now,
 	}
+}
+
+// deliveryPhone picks the number frozen onto an order and printed on its
+// shipping label.
+//
+// The address's own phone wins: it is who a courier should call at that door,
+// which for a gift is the recipient rather than the buyer. The account number
+// is the fallback for addresses saved before the per-address phone existed —
+// those cannot be re-entered retrospectively, and an order with no contact at
+// all is a parcel nobody can chase.
+func deliveryPhone(addr auth.Address, accountPhone string) string {
+	if addr.Phone != "" {
+		return addr.Phone
+	}
+	return accountPhone
+}
+
+// confirmationTimeout bounds a send. Generous, because it runs detached from
+// the request and an SMTP host can be slow without anything being wrong.
+const confirmationTimeout = 30 * time.Second
+
+// sendConfirmation emails the customer that their order is confirmed.
+//
+// Called ONLY when the guarded MarkPlaced reported modified — which happens
+// exactly once across the callback, the webhook, and every webhook retry. That
+// existing guard is what makes this exactly-once; there is no second mechanism
+// and no dedupe table needed.
+//
+// It runs in its own goroutine on a DETACHED context. The callback is a request
+// a shopper is waiting on and the webhook must answer Razorpay quickly; neither
+// should hold open for an SMTP round-trip. Detaching also means a cancelled
+// request cannot abort a half-sent confirmation.
+//
+// Every failure is logged and swallowed. Mail is never allowed to be the reason
+// a payment fails to confirm — the money has already moved, and the order is
+// already placed.
+func (s *Service) sendConfirmation(ctx context.Context, o Order) {
+	if s.notifier == nil {
+		return
+	}
+
+	msg, err := BuildConfirmation(o)
+	if err != nil {
+		s.logger.Error("order: build confirmation email",
+			slog.String("orderId", o.OrderID), slog.Any("error", err))
+		return
+	}
+
+	// WithoutCancel rather than Background: the request id and any other values
+	// on the context survive into the log line, while cancellation does not —
+	// the shopper's response returning must not abort a half-sent email.
+	sendCtx := context.WithoutCancel(ctx)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(sendCtx, confirmationTimeout)
+		defer cancel()
+
+		if sendErr := s.notifier.Send(ctx, msg); sendErr != nil {
+			if errors.Is(sendErr, email.ErrNotConfigured) {
+				// Mail is switched off. Not a fault, and not worth an ERROR
+				// line on every single order.
+				s.logger.Debug("order: confirmation not sent, mail is unconfigured",
+					slog.String("orderId", o.OrderID))
+				return
+			}
+			// Loud, because right now nothing retries this: the customer has
+			// paid and will not hear from us. See task 12.5.
+			s.logger.Error("order: send confirmation email",
+				slog.String("orderId", o.OrderID), slog.Any("error", sendErr))
+			return
+		}
+		s.logger.Info("order: confirmation email sent", slog.String("orderId", o.OrderID))
+	}()
 }
 
 // CheckoutResult is returned by OpenCheckout on success.
@@ -179,7 +270,7 @@ func (s *Service) OpenCheckout(ctx context.Context, userID bson.ObjectID, addres
 	}
 
 	// 3. Resolve the shipping address.
-	addr, err := s.auth.AddressFor(ctx, userID, addressID)
+	addr, accountPhone, err := s.auth.AddressFor(ctx, userID, addressID)
 	if errors.Is(err, auth.ErrAddressNotFound) {
 		if addressID == nil {
 			return CheckoutResult{}, ErrNoSavedAddress
@@ -255,6 +346,7 @@ func (s *Service) OpenCheckout(ctx context.Context, userID bson.ObjectID, addres
 				Currency: currencyINR,
 			},
 			ShippingAddress: addr,
+			CustomerPhone:   deliveryPhone(addr, accountPhone),
 			CreatedAt:       now,
 			ExpiresAt:       now.Add(ReservationWindow),
 			UpdatedAt:       now,
@@ -398,7 +490,19 @@ func (s *Service) ConfirmPayment(
 		return s.repo.ByOrderID(ctx, userID, orderID)
 	}
 
-	// 8. Best-effort cart clear: a failure is logged, not surfaced.
+	// 8. Side effects of a successful capture. Both are best-effort and neither
+	// can un-place the order.
+	//
+	// The confirmation is built from the post-transition view rather than a
+	// re-fetch: o is what was read BEFORE MarkPlaced, so emailing it would send
+	// a confirmation saying the order is still awaiting payment.
+	placed := o
+	placed.Status = StatusPlaced
+	placed.Payment = payment
+	placed.PlacedAt = &now
+	placed.UpdatedAt = now
+	s.sendConfirmation(ctx, placed)
+
 	if s.cartClearer != nil {
 		if _, clearErr := s.cartClearer.Clear(ctx, userID); clearErr != nil {
 			s.logger.ErrorContext(ctx, "order: confirm payment: clear cart",

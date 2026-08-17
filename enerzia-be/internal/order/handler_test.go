@@ -971,3 +971,94 @@ func TestGetOrder_RepoErrorReturns500(t *testing.T) {
 		t.Errorf("status = %d, want 500", rec.Code)
 	}
 }
+
+// TestWebhookFillsPaymentDetailAfterTheCallbackWon reproduces the defect this
+// fix addresses.
+//
+// The browser callback places the order first — it is synchronous with the
+// shopper and almost always wins — but it only receives ids and a signature, so
+// it cannot record HOW the order was paid for. The webhook is the only thing
+// that knows, and MarkPlaced's status:"pending_payment" guard then rejects its
+// update. Before the fix the method was silently dropped and every placed order
+// carried a null method, which is what a real netbanking order actually did.
+func TestWebhookFillsPaymentDetailAfterTheCallbackWon(t *testing.T) {
+	store := &fakeStore{
+		byRzpOrder: order.Order{
+			OrderID: "EFF-000001",
+			UserID:  testUser,
+			Status:  order.StatusPlaced, // the callback already placed it
+			// Must match the event payload's amount or the webhook's security
+			// assertion refuses the whole transition.
+			Totals: order.Totals{Total: 49900},
+			Payment: order.Payment{
+				Provider: "razorpay", Status: order.PaymentStatusCaptured,
+				Amount: 49900, Currency: "INR", RazorpayOrderID: "order_rzp",
+				// No Method — the callback could not know it.
+			},
+		},
+		markModified: false, // MarkPlaced's guard rejects the webhook
+		fillModified: true,
+	}
+	h := newWebhookAPI(t, store, &fakeEventStore{}, &fakeGateway{})
+
+	rec := doWebhook(t, h, captureJSON, "sig", "evt_fill_001")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if len(store.filled) != 1 {
+		t.Fatalf("FillPaymentDetail called %d times, want 1", len(store.filled))
+	}
+	if got := store.filled[0].Method; got != order.PaymentUPI {
+		t.Errorf("filled method = %q, want upi from the event payload", got)
+	}
+	if got := store.filled[0].Label; got != "UPI" {
+		t.Errorf("filled label = %q, want UPI", got)
+	}
+}
+
+func TestWebhookDoesNotFillWhenItWonTheRaceItself(t *testing.T) {
+	// modified == true means MarkPlaced wrote the full payment document,
+	// method included. A second write would be pointless.
+	store := &fakeStore{
+		byRzpOrder: order.Order{
+			OrderID: "EFF-000001", UserID: testUser, Status: order.StatusPendingPayment,
+			Totals: order.Totals{Total: 49900},
+			Payment: order.Payment{
+				Provider: "razorpay", Status: order.PaymentStatusCreated,
+				Amount: 49900, Currency: "INR", RazorpayOrderID: "order_rzp",
+			},
+		},
+		markModified: true,
+	}
+	h := newWebhookAPI(t, store, &fakeEventStore{}, &fakeGateway{})
+
+	if rec := doWebhook(t, h, captureJSON, "sig", "evt_fill_002"); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if len(store.filled) != 0 {
+		t.Errorf("FillPaymentDetail called %d times after winning the race, want 0", len(store.filled))
+	}
+}
+
+func TestWebhookStillAnswers200WhenTheFillFails(t *testing.T) {
+	// The order is placed and the money is captured. A non-2xx would make
+	// Razorpay redeliver forever over a detail field.
+	store := &fakeStore{
+		byRzpOrder: order.Order{
+			OrderID: "EFF-000001", UserID: testUser, Status: order.StatusPlaced,
+			Totals: order.Totals{Total: 49900},
+			Payment: order.Payment{
+				Provider: "razorpay", Status: order.PaymentStatusCaptured,
+				Amount: 49900, Currency: "INR", RazorpayOrderID: "order_rzp",
+			},
+		},
+		markModified: false,
+		fillErr:      errors.New("mongo is down"),
+	}
+	h := newWebhookAPI(t, store, &fakeEventStore{}, &fakeGateway{})
+
+	if rec := doWebhook(t, h, captureJSON, "sig", "evt_fill_003"); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 despite the fill failing (%s)", rec.Code, rec.Body.String())
+	}
+}

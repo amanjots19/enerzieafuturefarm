@@ -263,11 +263,13 @@ func TestByOrderIDWrapsErrors(t *testing.T) {
 
 /* ------------------------------------------------------------- ListForUser */
 
-func TestListForUserExcludesExpiredAndSortsByCreatedAt(t *testing.T) {
-	// Expired orders must be excluded by the query, not filtered in Go, so that
-	// the userId_1_createdAt_-1 index can satisfy the whole query in one pass.
-	// Sorted on createdAt (not placedAt) so pending orders appear at the right
-	// position — a pending_payment order has no placedAt yet.
+func TestListForUserReturnsPaidOrdersOnlyAndSortsByCreatedAt(t *testing.T) {
+	// Only paid orders (placed, packed, shipped, delivered, cancelled) must be
+	// returned via an inclusive $in filter. pending_payment, payment_failed, and
+	// expired are excluded. The $in filter fails safe: a new status is excluded
+	// until explicitly added, unlike a growing exclusion list.
+	// Sorted on createdAt (not placedAt) so the query works for all statuses
+	// without null scatter.
 	repo, fake := newRepo(t)
 	uid := bson.NewObjectID()
 	fake.Respond("find", mongotest.Cursor(ordersNS, orderDoc("EFF-000001", uid, order.StatusPlaced)))
@@ -289,13 +291,30 @@ func TestListForUserExcludesExpiredAndSortsByCreatedAt(t *testing.T) {
 		t.Errorf("filter.userId = %v (err=%v), want %v", gotUID, err2, uid)
 	}
 
-	// Expired orders excluded via $ne query, not Go-side filtering.
-	neVal, err2 := filter.LookupErr("status")
+	// Status must use $in over the five paid statuses — not $ne or $nin.
+	statusVal, err2 := filter.LookupErr("status")
 	if err2 != nil {
-		t.Fatal("filter must include a status clause to exclude expired orders")
+		t.Fatal("filter must include a status clause to restrict to paid orders")
 	}
-	if got := neVal.Document().Lookup("$ne").StringValue(); got != "expired" {
-		t.Errorf("status filter = %q, want {$ne: 'expired'}", got)
+	inArr, err2 := statusVal.Document().LookupErr("$in")
+	if err2 != nil {
+		t.Fatal("status filter must use $in (inclusive), not $ne or $nin")
+	}
+	vals, err2 := inArr.Array().Values()
+	if err2 != nil {
+		t.Fatalf("$in value is not an array: %v", err2)
+	}
+	wantStatuses := []string{"placed", "packed", "shipped", "delivered", "cancelled"}
+	if len(vals) != len(wantStatuses) {
+		t.Errorf("$in has %d statuses, want %d", len(vals), len(wantStatuses))
+	}
+	for i, want := range wantStatuses {
+		if i >= len(vals) {
+			break
+		}
+		if got := vals[i].StringValue(); got != want {
+			t.Errorf("$in[%d] = %q, want %q", i, got, want)
+		}
 	}
 
 	// Sort by createdAt descending.
@@ -305,6 +324,30 @@ func TestListForUserExcludesExpiredAndSortsByCreatedAt(t *testing.T) {
 	}
 	if got := sortVal.Document().Lookup("createdAt").AsInt64(); got != -1 {
 		t.Errorf("sort.createdAt = %d, want -1 (descending)", got)
+	}
+}
+
+func TestByOrderIDReturnsPendingPaymentOrders(t *testing.T) {
+	// ByOrderID must return orders regardless of status — including pending_payment.
+	// ListForUser excludes unpaid orders; ByOrderID does not. The obvious mistake
+	// is to "consistently" filter both and silently 404 an order that exists.
+	repo, fake := newRepo(t)
+	uid := bson.NewObjectID()
+	fake.Respond("find", mongotest.Cursor(ordersNS, orderDoc("EFF-118531", uid, order.StatusPendingPayment)))
+
+	got, err := repo.ByOrderID(t.Context(), uid, "EFF-118531")
+	if err != nil {
+		t.Fatalf("ByOrderID() error = %v, want nil for pending_payment order", err)
+	}
+	if got.OrderID != "EFF-118531" {
+		t.Errorf("OrderID = %q, want EFF-118531", got.OrderID)
+	}
+
+	// The filter must NOT include any status restriction.
+	req, _ := fake.LastRequest("find")
+	filter := req.Doc.Lookup("filter").Document()
+	if _, err2 := filter.LookupErr("status"); err2 == nil {
+		t.Error("ByOrderID filter must NOT include a status field — it returns orders of any status")
 	}
 }
 
@@ -580,7 +623,7 @@ func TestMarkPlacedWrapsErrors(t *testing.T) {
 
 /* ------------------------------------------------------- EnsureIndexes */
 
-func TestEnsureIndexesCreatesAllSixIndexes(t *testing.T) {
+func TestEnsureIndexesCreatesAllSevenIndexes(t *testing.T) {
 	repo, fake := newRepo(t)
 
 	if err := repo.EnsureIndexes(t.Context()); err != nil {
@@ -595,8 +638,8 @@ func TestEnsureIndexesCreatesAllSixIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading index specs: %v", err)
 	}
-	if len(specs) != 6 {
-		t.Errorf("got %d index specs, want 6", len(specs))
+	if len(specs) != 7 {
+		t.Errorf("got %d index specs, want 7", len(specs))
 	}
 
 	type indexInfo struct {
@@ -605,7 +648,7 @@ func TestEnsureIndexesCreatesAllSixIndexes(t *testing.T) {
 		partialStatus    string // non-empty only for status-scoped partial indexes
 	}
 
-	byName := make(map[string]indexInfo, 6)
+	byName := make(map[string]indexInfo, 7)
 	for _, spec := range specs {
 		doc := spec.Document()
 		name := doc.Lookup("name").StringValue()
@@ -637,6 +680,9 @@ func TestEnsureIndexesCreatesAllSixIndexes(t *testing.T) {
 		{"payment.razorpayPaymentId_1", true, true, ""},
 		{"userId_1", true, true, "pending_payment"},
 		{"status_1_expiresAt_1", false, true, "pending_payment"},
+		// The admin order book. Not partial: it must serve every status,
+		// including ?status=all.
+		{"status_1_createdAt_-1", false, false, ""},
 	}
 
 	for _, c := range checks {

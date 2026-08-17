@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/enerzia/enerzia-be/internal/admin"
 	"github.com/enerzia/enerzia-be/internal/auth"
 	"github.com/enerzia/enerzia-be/internal/cart"
 	"github.com/enerzia/enerzia-be/internal/catalogue"
@@ -212,6 +213,63 @@ type nullParser struct{}
 
 func (nullParser) ParseToken(string) (auth.Claims, error) {
 	return auth.Claims{}, errors.New("no token")
+}
+
+// adminNullParser satisfies admin.TokenParser and always rejects tokens.
+// Distinct from nullParser because admin.TokenParser.ParseToken returns
+// admin.Claims, not auth.Claims.
+type adminNullParser struct{}
+
+func (adminNullParser) ParseToken(string) (admin.Claims, error) {
+	return admin.Claims{}, errors.New("no token")
+}
+
+// nilWriter satisfies catalogue.Writer with no-op methods. It is only used to
+// build a catalogue.AdminService for wiring tests — none of its methods are
+// called since auth middleware fires before any handler logic runs.
+type nilWriter struct{}
+
+func (nilWriter) ListAll(context.Context) ([]catalogue.Product, error) { return nil, nil }
+func (nilWriter) Get(context.Context, catalogue.ID) (catalogue.Product, error) {
+	return catalogue.Product{}, nil
+}
+func (nilWriter) Create(context.Context, catalogue.Product) error { return nil }
+func (nilWriter) Update(context.Context, catalogue.Product) error { return nil }
+func (nilWriter) Retire(context.Context, catalogue.ID) error      { return nil }
+
+// TestAdminRouteIsRegisteredAndProtected asserts that with all handlers wired,
+// the admin catalogue route exists and requires authentication. A 404 here
+// would mean the handler was never registered; a 401 proves the route exists
+// and the auth middleware ran.
+func TestAdminRouteIsRegisteredAndProtected(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	tokens := admin.NewTokenIssuer([]byte("admin-test-secret-for-router-test!!!"), admin.TokenTTL)
+	adminSvc := admin.NewService(admin.ServiceConfig{
+		Tokens:  tokens,
+		Limiter: admin.NewLimiter(),
+	})
+	h := server.New(server.Deps{
+		Config:         config.Config{},
+		Mongo:          stubPinger{},
+		Admin:          admin.NewHandler(adminSvc, logger),
+		AdminCatalogue: catalogue.NewAdminHandler(catalogue.NewAdminService(nilWriter{}), adminNullParser{}, logger),
+		Logger:         logger,
+		Version:        "0.1.0",
+		Started:        time.Now(),
+	})
+
+	// No token → auth middleware fires and returns 401, not 404.
+	// A 404 would mean AdminCatalogue.Register was never called.
+	rec := do(t, h, http.MethodGet, "/api/v1/admin/products")
+	if rec.Code == http.StatusNotFound {
+		t.Fatal("GET /api/v1/admin/products returned 404 — AdminCatalogue handler was not registered")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/v1/admin/products: status = %d, want 401 from auth middleware", rec.Code)
+	}
+	if got := errorCode(t, rec); got != "UNAUTHORIZED" {
+		t.Errorf("error code = %q, want UNAUTHORIZED", got)
+	}
 }
 
 func TestAllHandlersAreRegistered(t *testing.T) {

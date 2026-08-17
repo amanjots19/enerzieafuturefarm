@@ -76,14 +76,14 @@ func SeedProducts() []Product {
 		{
 			ID: "powder-100g", Family: "powder", Form: FormPowder,
 			Name: "Pure Spirulina Powder — 100 g",
-			Stat: "60% plant protein", Stat2: "20 servings",
+			Stat: "62% plant protein", Stat2: "20 servings",
 			Blurb: blurbPowder, Grad: gradPowder, Position: 0,
 			MRP: rupees(250), Price: rupees(200),
 		},
 		{
 			ID: "powder-250g", Family: "powder", Form: FormPowder,
 			Name: "Pure Spirulina Powder — 250 g",
-			Stat: "60% plant protein", Stat2: "50 servings",
+			Stat: "62% plant protein", Stat2: "50 servings",
 			Blurb: blurbPowder, Grad: gradPowder, Position: 1,
 			MRP: rupees(560), Price: rupees(450),
 		},
@@ -152,7 +152,7 @@ func SeedProducts() []Product {
 // SeedTrustTiles returns the four statistics under the shop grid.
 func SeedTrustTiles() []TrustTile {
 	return []TrustTile{
-		{Big: "60%+", Body: "Complete plant protein by weight, with all nine essential amino acids."},
+		{Big: "62%+", Body: "Complete plant protein by weight, with all nine essential amino acids."},
 		{Big: "FSSAI", Body: "Licensed facility; every batch third-party tested for heavy metals."},
 		{Big: "0", Body: "Binders, fillers, colours or preservatives — one ingredient only."},
 		{Big: "48 hrs", Body: "From harvest to sealed pack, dried below 60 °C to protect phycocyanin."},

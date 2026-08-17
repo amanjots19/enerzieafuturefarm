@@ -24,6 +24,10 @@ const (
 	fieldPosition = "position"
 	fieldActive   = "active"
 	fieldStock    = "stock"
+	fieldImages   = "images"
+
+	// opSet is the MongoDB $set update operator.
+	opSet = "$set"
 )
 
 // ErrProductNotFound is returned when no product has the requested id.
@@ -31,6 +35,9 @@ var ErrProductNotFound = errors.New("catalogue: product not found")
 
 // ErrOutOfStock is returned when a stock decrement finds too few units.
 var ErrOutOfStock = errors.New("catalogue: out of stock")
+
+// ErrDuplicateProduct is returned when Create finds a product with the same id.
+var ErrDuplicateProduct = errors.New("catalogue: duplicate product id")
 
 // Repository reads and seeds the catalogue.
 type Repository struct {
@@ -211,7 +218,7 @@ func (r *Repository) Seed(ctx context.Context, products []Product, tiles []Trust
 
 	for _, p := range products {
 		update := bson.D{
-			{Key: "$set", Value: bson.D{
+			{Key: opSet, Value: bson.D{
 				{Key: fieldFamily, Value: string(p.Family)},
 				{Key: fieldForm, Value: string(p.Form)},
 				{Key: "name", Value: p.Name},
@@ -227,7 +234,12 @@ func (r *Repository) Seed(ctx context.Context, products []Product, tiles []Trust
 				{Key: "badges", Value: p.Badges},
 				{Key: "nutrition", Value: p.Nutrition},
 			}},
-			{Key: "$setOnInsert", Value: bson.D{{Key: fieldStock, Value: p.Stock}}},
+			{Key: "$setOnInsert", Value: bson.D{
+				{Key: fieldStock, Value: p.Stock},
+				// images is set only on insert so re-seeding never overwrites
+				// photographs an administrator uploaded via the console.
+				{Key: fieldImages, Value: []Image{}},
+			}},
 		}
 
 		if _, err := r.products.UpdateOne(ctx,
@@ -238,12 +250,85 @@ func (r *Repository) Seed(ctx context.Context, products []Product, tiles []Trust
 		}
 	}
 
-	trust := bson.D{{Key: "$set", Value: bson.D{{Key: "tiles", Value: tiles}}}}
+	trust := bson.D{{Key: opSet, Value: bson.D{{Key: "tiles", Value: tiles}}}}
 	if _, err := r.content.UpdateOne(ctx,
 		bson.D{{Key: fieldID, Value: trustContentID}}, trust,
 		options.UpdateOne().SetUpsert(true),
 	); err != nil {
 		return fmt.Errorf("catalogue: seed trust tiles: %w", err)
+	}
+	return nil
+}
+
+// ListAll returns every product, including retired ones, ordered by position.
+// Used by the admin catalogue console, where retired products must be
+// accessible so they can be brought back with a PUT.
+func (r *Repository) ListAll(ctx context.Context) ([]Product, error) {
+	return r.find(ctx, bson.D{}, "list all products")
+}
+
+// Create inserts a new product document. Returns ErrDuplicateProduct when a
+// product with the same _id already exists — _id is the join key of every
+// cart line and order line, so silent reuse is never acceptable.
+func (r *Repository) Create(ctx context.Context, p Product) error {
+	if _, err := r.products.InsertOne(ctx, p); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return ErrDuplicateProduct
+		}
+		return fmt.Errorf("catalogue: create product: %w", err)
+	}
+	return nil
+}
+
+// Update replaces every editable field of an existing product. Returns
+// ErrProductNotFound when no document matches the id. _id is never sent in
+// $set — rewriting the join key would orphan every cart line and order line
+// that references it.
+func (r *Repository) Update(ctx context.Context, p Product) error {
+	res, err := r.products.UpdateOne(ctx,
+		bson.D{{Key: fieldID, Value: string(p.ID)}},
+		bson.D{{Key: opSet, Value: bson.D{
+			{Key: fieldFamily, Value: string(p.Family)},
+			{Key: fieldForm, Value: string(p.Form)},
+			{Key: "name", Value: p.Name},
+			{Key: "stat", Value: p.Stat},
+			{Key: "stat2", Value: p.Stat2},
+			{Key: "blurb", Value: p.Blurb},
+			{Key: "grad", Value: p.Grad},
+			{Key: fieldPosition, Value: p.Position},
+			{Key: fieldImages, Value: p.Images},
+			{Key: "mrp", Value: p.MRP},
+			{Key: "price", Value: p.Price},
+			{Key: fieldStock, Value: p.Stock},
+			{Key: fieldActive, Value: p.Active},
+			{Key: "rating", Value: p.Rating},
+			{Key: "badges", Value: p.Badges},
+			{Key: "nutrition", Value: p.Nutrition},
+		}}},
+	)
+	if err != nil {
+		return fmt.Errorf("catalogue: update product: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("%w: %s", ErrProductNotFound, p.ID)
+	}
+	return nil
+}
+
+// Retire sets active:false on the product with the given id via $set, leaving
+// the document intact so past orders can still reference it. Returns
+// ErrProductNotFound only when no document matches at all — an already-retired
+// product is a no-op, not an error.
+func (r *Repository) Retire(ctx context.Context, id ID) error {
+	res, err := r.products.UpdateOne(ctx,
+		bson.D{{Key: fieldID, Value: string(id)}},
+		bson.D{{Key: opSet, Value: bson.D{{Key: fieldActive, Value: false}}}},
+	)
+	if err != nil {
+		return fmt.Errorf("catalogue: retire product: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("%w: %s", ErrProductNotFound, id)
 	}
 	return nil
 }

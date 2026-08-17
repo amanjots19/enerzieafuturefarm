@@ -44,6 +44,11 @@ func ValidateAddress(a Address) (FieldProblem, bool) {
 		return FieldProblem{"name", "Please enter the name for delivery."}, false
 	case !emailPattern.MatchString(a.Email):
 		return FieldProblem{"email", "Please enter a valid email for order updates."}, false
+	// Checked immediately after email: both are how this delivery gets contacted.
+	// Required on every write, so a shopper editing an older address adds one.
+	// The message differs from sign-in's so it is obvious which field is meant.
+	case !ValidPhone(a.Phone):
+		return FieldProblem{"phone", "Please enter a valid 10-digit mobile number for delivery."}, false
 	case len(strings.TrimSpace(a.Line1)) < minStreetLength:
 		return FieldProblem{"line1", "Please enter your full street address."}, false
 	case strings.TrimSpace(a.City) == "" || strings.TrimSpace(a.State) == "":
@@ -63,6 +68,7 @@ func normaliseAddress(a Address) Address {
 		Label:     strings.TrimSpace(a.Label),
 		Name:      strings.TrimSpace(a.Name),
 		Email:     strings.TrimSpace(a.Email),
+		Phone:     strings.TrimSpace(a.Phone),
 		Line1:     strings.TrimSpace(a.Line1),
 		City:      strings.TrimSpace(a.City),
 		State:     strings.TrimSpace(a.State),
@@ -203,29 +209,35 @@ func (s *Service) DeleteAddress(ctx context.Context, userID, addressID bson.Obje
 
 // AddressFor resolves the address an order should ship to: the one named, or
 // the default when none is named.
-func (s *Service) AddressFor(ctx context.Context, userID bson.ObjectID, addressID *bson.ObjectID) (Address, error) {
+// It also returns the shopper's **account** phone — the number they proved over
+// OTP. That is not the delivery contact: an address carries its own phone, and
+// the caller prefers it. It is returned because addresses saved before the
+// per-address phone existed have none, and an order with no contact number at
+// all is a parcel a courier cannot chase. Returning it here costs nothing, as
+// the user document is already loaded to find the address.
+func (s *Service) AddressFor(ctx context.Context, userID bson.ObjectID, addressID *bson.ObjectID) (Address, string, error) {
 	user, err := s.store.UserByID(ctx, userID)
 	if err != nil {
-		return Address{}, err
+		return Address{}, "", err
 	}
 	if len(user.Addresses) == 0 {
-		return Address{}, ErrAddressNotFound
+		return Address{}, "", ErrAddressNotFound
 	}
 
 	if addressID == nil {
 		for _, a := range user.Addresses {
 			if a.IsDefault {
-				return a, nil
+				return a, user.Phone, nil
 			}
 		}
-		return user.Addresses[0], nil
+		return user.Addresses[0], user.Phone, nil
 	}
 
 	i := indexOfAddress(user.Addresses, *addressID)
 	if i < 0 {
-		return Address{}, fmt.Errorf("%w: %s", ErrAddressNotFound, addressID.Hex())
+		return Address{}, "", fmt.Errorf("%w: %s", ErrAddressNotFound, addressID.Hex())
 	}
-	return user.Addresses[i], nil
+	return user.Addresses[i], user.Phone, nil
 }
 
 /* ----------------------------------------------------------------- helpers */

@@ -220,6 +220,40 @@ func (s *Service) handleWebhookCapture(
 		return fmt.Errorf("order: webhook: mark placed: %w", err)
 	}
 
+	// The callback almost always wins the race above, and it cannot know how the
+	// shopper paid — Razorpay's browser response carries only ids and a
+	// signature. Only this event does. Without this the method is discarded and
+	// every receipt is left unable to say how it was paid.
+	//
+	// Guarded on the method still being empty, so a redelivery cannot overwrite
+	// a value already recorded, and so this is a no-op once it has run.
+	if !modified && method != "" {
+		filled, fillErr := s.repo.FillPaymentDetail(ctx, o.OrderID, payment, now)
+		switch {
+		case fillErr != nil:
+			// Worth an error line, but not worth a non-2xx: the order is placed
+			// and the money is captured. A retry would only re-attempt this.
+			s.logger.ErrorContext(ctx, "order: webhook: fill payment detail",
+				slog.String("orderId", o.OrderID), slog.Any("error", fillErr))
+		case filled:
+			s.logger.InfoContext(ctx, "order: webhook: payment detail filled in after callback",
+				slog.String("orderId", o.OrderID), slog.String("method", string(method)))
+		}
+	}
+
+	// Side effects of a capture, both gated on modified so they happen exactly
+	// once however many times Razorpay redelivers this event.
+	if modified {
+		// Built from the post-transition view: o was read BEFORE MarkPlaced, so
+		// emailing it would tell the customer their order is awaiting payment.
+		placed := o
+		placed.Status = StatusPlaced
+		placed.Payment = payment
+		placed.PlacedAt = &now
+		placed.UpdatedAt = now
+		s.sendConfirmation(ctx, placed)
+	}
+
 	// Best-effort cart clear. A failure is logged but does not un-place the
 	// order or cause a retry. The userID comes from the resolved order document
 	// — the webhook carries no auth token (schema.md §Razorpay).

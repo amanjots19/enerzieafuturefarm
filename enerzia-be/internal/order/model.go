@@ -33,8 +33,9 @@ const providerRazorpay = "razorpay"
 // Status is the fulfilment stage of an order (schema.md §orders lifecycle).
 type Status string
 
-// The full lifecycle. Only the transitions out of pending_payment are produced
-// today; the fulfilment states exist so the field's domain is complete.
+// The full lifecycle. Only Razorpay moves a status: it records what happened to
+// the money. What happened to the parcel is the separate Fulfilment field
+// below.
 const (
 	// StatusPendingPayment holds a stock reservation while Razorpay collects
 	// the payment. The order is real but the money has not moved yet.
@@ -47,7 +48,16 @@ const (
 	StatusPaymentFailed Status = "payment_failed"
 	// StatusExpired means the 15-minute reservation elapsed without payment.
 	// The stock reservation is released.
-	StatusExpired   Status = "expired"
+	StatusExpired Status = "expired"
+
+	// StatusPacked, StatusShipped, StatusDelivered and StatusCancelled are
+	// valid stored values that nothing produces. They predate the fulfilment
+	// split (schema.md §orders, 2026-08-17), which moved parcel progress to its
+	// own field so an operator could not rewrite an order's payment state by
+	// marking a box packed. They are kept so stored documents and the contract
+	// stay in step, and because ListForUser still includes them — a cancelled
+	// order was paid for, and hiding it would erase a purchase the shopper
+	// remembers making. Removing them is task 11.9.
 	StatusPacked    Status = "packed"
 	StatusShipped   Status = "shipped"
 	StatusDelivered Status = "delivered"
@@ -63,6 +73,132 @@ func (s Status) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Label is the display string for a status, stored nowhere and computed at
+// response time. An unrecognised status yields "" rather than a guess,
+// following PaymentMethod.Label.
+func (s Status) Label() string {
+	switch s {
+	case StatusPendingPayment:
+		return "Payment pending"
+	case StatusPlaced:
+		return "Placed"
+	case StatusPaymentFailed:
+		return "Payment failed"
+	case StatusExpired:
+		return "Expired"
+	case StatusPacked:
+		return "Packed"
+	case StatusShipped:
+		return "Shipped"
+	case StatusDelivered:
+		return "Delivered"
+	case StatusCancelled:
+		return "Cancelled"
+	default:
+		return ""
+	}
+}
+
+// ─── Fulfilment ──────────────────────────────────────────────────────────────
+
+// Fulfilment is what a person did with the parcel, tracked separately from
+// Status so the two cannot interfere (schema.md §orders, roadmap.md §Admin
+// orders). Status records what Razorpay did with the money; a single field
+// carrying both would mean an operator marking a box packed had rewritten what
+// the order says about payment.
+//
+// Only the admin order book writes it. No shopper-facing endpoint reads it —
+// an order stays "Confirmed" to its buyer through every step here, and mapping
+// these states into the account area is a later decision.
+type Fulfilment string
+
+// The progression, in order. There is no delivered value because nothing tells
+// us a parcel arrived, and no cancelled value because there is no cancellation
+// and no refund.
+const (
+	// FulfilmentNone is the zero value: paid for, nothing done to it yet. It is
+	// the absence of the field on the document, not a stored string — which is
+	// also why the split needed no migration.
+	FulfilmentNone Fulfilment = ""
+	// FulfilmentPacked is boxed, label printed, waiting for the courier.
+	FulfilmentPacked Fulfilment = "packed"
+	// FulfilmentInTransit is handed over and moving.
+	FulfilmentInTransit Fulfilment = "in_transit"
+	// FulfilmentShipped is terminal: the parcel is out of our hands.
+	FulfilmentShipped Fulfilment = "shipped"
+)
+
+// Valid reports whether f is a fulfilment state the system recognises.
+// FulfilmentNone is valid: "not started" is a state, not a missing value.
+func (f Fulfilment) Valid() bool {
+	switch f {
+	case FulfilmentNone, FulfilmentPacked, FulfilmentInTransit, FulfilmentShipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Label is the display string for a fulfilment state, computed at response
+// time and stored nowhere. An unrecognised value yields "" rather than a guess.
+func (f Fulfilment) Label() string {
+	switch f {
+	case FulfilmentNone:
+		return "Not started"
+	case FulfilmentPacked:
+		return "Processed"
+	case FulfilmentInTransit:
+		return "Transit"
+	case FulfilmentShipped:
+		return "Shipped"
+	default:
+		return ""
+	}
+}
+
+// fulfilmentOrder is the linear progression an operator drives by hand.
+// CanFulfil is derived from it rather than from a hand-written pair list, so a
+// new stage is added by inserting one element here and cannot exist in the
+// sequence without also being permitted by the guard.
+var fulfilmentOrder = []Fulfilment{
+	FulfilmentNone,
+	FulfilmentPacked,
+	FulfilmentInTransit,
+	FulfilmentShipped,
+}
+
+// CanFulfil reports whether an operator may move an order from one fulfilment
+// state to another (roadmap.md §Admin orders).
+//
+// The progression is strictly linear and forward by exactly one step.
+// Backwards moves and skips are both refused: jumping to shipped would skip the
+// step at which a label gets printed, and there is no legitimate reason to
+// un-ship a parcel that has already gone. A self-move is refused too — a
+// no-op that answered 200 would tell an operator a parcel moved when nothing
+// did.
+func CanFulfil(from, to Fulfilment) bool {
+	next, ok := NextFulfilment(from)
+	return ok && next == to
+}
+
+// NextFulfilment returns the only state an order may move to from f, and
+// whether one exists. It is false for FulfilmentShipped, which is terminal, and
+// for any value outside the sequence.
+//
+// Exported because the 409 an operator reads is far more useful when it names
+// what they *can* do than when it only says no.
+func NextFulfilment(f Fulfilment) (Fulfilment, bool) {
+	for i, cur := range fulfilmentOrder {
+		if cur == f {
+			if i+1 < len(fulfilmentOrder) {
+				return fulfilmentOrder[i+1], true
+			}
+			return FulfilmentNone, false
+		}
+	}
+	return FulfilmentNone, false
 }
 
 // ─── Payment status ──────────────────────────────────────────────────────────
@@ -405,6 +541,21 @@ type Order struct {
 	// ShippingAddress is a copy, not a reference.
 	ShippingAddress auth.Address `bson:"shippingAddress"`
 
+	// CustomerPhone is the delivery contact frozen at creation: the address's
+	// own phone, or the account's when the address predates that field. It is
+	// what the shipping label prints and what an operator calls when a delivery
+	// goes wrong.
+	//
+	// omitempty because orders placed before this field existed have none, and
+	// Validate tolerates that — they are real orders and must stay readable.
+	CustomerPhone string `bson:"customerPhone,omitempty"`
+
+	// Fulfilment is what a person did with the parcel, written only by the
+	// admin order book and read by no shopper-facing endpoint. omitempty is
+	// load-bearing: FulfilmentNone is the absence of the key, which is what
+	// makes every pre-existing order correct without a migration.
+	Fulfilment Fulfilment `bson:"fulfilment,omitempty"`
+
 	CreatedAt time.Time  `bson:"createdAt"`
 	ExpiresAt time.Time  `bson:"expiresAt"` // createdAt + 15 min; NOT a TTL index
 	PlacedAt  *time.Time `bson:"placedAt"`  // nil until payment is captured
@@ -440,6 +591,21 @@ func (o Order) Validate() error {
 	}
 	if !o.Status.Valid() {
 		return fmt.Errorf("order: unknown status %q", o.Status)
+	}
+	if !o.Fulfilment.Valid() {
+		return fmt.Errorf("order: unknown fulfilment %q", o.Fulfilment)
+	}
+	// Checked only when set. Every order this system creates has one, but
+	// orders written before the field existed do not, and rejecting those would
+	// make a real past purchase unreadable. A malformed value is still caught —
+	// a label printed with a mangled number is worse than one with none.
+	if o.CustomerPhone != "" && !auth.ValidPhone(o.CustomerPhone) {
+		return fmt.Errorf("order: customer phone %q is not ten digits", o.CustomerPhone)
+	}
+	// Fulfilment progress on an order nobody paid for would mean a parcel went
+	// out for free. Only a placed order can carry one.
+	if o.Fulfilment != FulfilmentNone && o.Status != StatusPlaced {
+		return fmt.Errorf("order: %s order cannot carry fulfilment %q", o.Status, o.Fulfilment)
 	}
 	if len(o.Lines) == 0 {
 		return errors.New("order: an order needs at least one line")

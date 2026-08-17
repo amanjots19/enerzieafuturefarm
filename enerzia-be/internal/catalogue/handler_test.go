@@ -375,6 +375,22 @@ func TestGetProductBadgesSerialiseAsArrayWhenAbsent(t *testing.T) {
 	}
 }
 
+func TestGetProductNutritionRowsSerialiseAsArrayWhenAbsent(t *testing.T) {
+	// A product with no nutrition rows must return "rows":[] not "rows":null.
+	// Assert on raw JSON text — Go's JSON decoder maps both [] and null to a nil
+	// slice, so a struct-level check would silently miss the bug.
+	p := tabletsProduct()
+	p.Nutrition = catalogue.Nutrition{ServingSize: "", Rows: nil}
+	rec := get(t, newAPI(t, &stubReader{products: []catalogue.Product{p}}), "/api/v1/products/"+string(p.ID))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"rows":[]`) {
+		t.Errorf("body = %s, want nutrition.rows to serialise as []", rec.Body.String())
+	}
+}
+
 /* ------------------------------------------- GET /api/v1/content/trust */
 
 func TestGetTrustReturnsTheTiles(t *testing.T) {
@@ -397,7 +413,7 @@ func TestGetTrustReturnsTheTiles(t *testing.T) {
 	if len(body.Data.Tiles) != 4 {
 		t.Fatalf("%d tiles, want 4", len(body.Data.Tiles))
 	}
-	if body.Data.Tiles[0].Big != "60%+" || body.Data.Tiles[0].Body == "" {
+	if body.Data.Tiles[0].Big != "62%+" || body.Data.Tiles[0].Body == "" {
 		t.Errorf("first tile = %+v", body.Data.Tiles[0])
 	}
 }
@@ -424,6 +440,77 @@ func TestGetTrustHidesDatabaseFailures(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "connection reset") {
 		t.Errorf("response leaks internals: %s", rec.Body.String())
+	}
+}
+
+/* ---------------------------------------------- images serialisation */
+
+func TestListProductsImagesSerialisesAsEmptyArray(t *testing.T) {
+	// The seeded products carry no photographs; the field must still come out as
+	// [] so the client never has to guard against null.
+	rec := get(t, newAPI(t, seeded()), "/api/v1/products")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"images":[]`) {
+		t.Errorf("body = %s, want images to serialise as [] for products without photographs", rec.Body.String())
+	}
+}
+
+func TestGetProductImagesSerialisesAsEmptyArray(t *testing.T) {
+	rec := get(t, newAPI(t, seeded()), "/api/v1/products/tablets-120")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"images":[]`) {
+		t.Errorf("body = %s, want images to serialise as [] for a product without photographs", rec.Body.String())
+	}
+}
+
+func TestGetProductRoundTripsImages(t *testing.T) {
+	// A product WITH images must deliver url, publicId and alt faithfully.
+	p := tabletsProduct()
+	p.Images = []catalogue.Image{
+		{
+			URL:      "https://res.cloudinary.com/enerzia/image/upload/v1/products/abc.jpg",
+			PublicID: "enerzia/products/abc",
+			Alt:      "Tablet jar, front",
+		},
+	}
+	reader := &stubReader{products: []catalogue.Product{p}}
+
+	rec := get(t, newAPI(t, reader), "/api/v1/products/tablets-120")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Data struct {
+			Product struct {
+				Images []struct {
+					URL      string `json:"url"`
+					PublicID string `json:"publicId"`
+					Alt      string `json:"alt"`
+				} `json:"images"`
+			} `json:"product"`
+		} `json:"data"`
+	}
+	decodeInto(t, rec, &body)
+
+	imgs := body.Data.Product.Images
+	if len(imgs) != 1 {
+		t.Fatalf("images count = %d, want 1", len(imgs))
+	}
+	if imgs[0].URL != "https://res.cloudinary.com/enerzia/image/upload/v1/products/abc.jpg" {
+		t.Errorf("url = %q", imgs[0].URL)
+	}
+	if imgs[0].PublicID != "enerzia/products/abc" {
+		t.Errorf("publicId = %q", imgs[0].PublicID)
+	}
+	if imgs[0].Alt != "Tablet jar, front" {
+		t.Errorf("alt = %q", imgs[0].Alt)
 	}
 }
 

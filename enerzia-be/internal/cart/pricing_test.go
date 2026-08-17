@@ -29,7 +29,7 @@ func TestComputeTotals(t *testing.T) {
 			lines: []cart.Line{line(38000, 47000, 1)},
 			want: cart.Totals{
 				MRPTotal: 47000, Subtotal: 38000, Savings: 9000,
-				Shipping: 4900, Total: 42900,
+				Shipping: 5000, Total: 43000,
 			},
 		},
 		{
@@ -204,8 +204,8 @@ func TestPricingConstantsMatchProductMd(t *testing.T) {
 	if cart.FreeShippingThreshold != 49900 {
 		t.Errorf("FreeShippingThreshold = %d paise, want 49900 (₹499)", cart.FreeShippingThreshold)
 	}
-	if cart.ShippingFee != 4900 {
-		t.Errorf("ShippingFee = %d paise, want 4900 (₹49)", cart.ShippingFee)
+	if cart.ShippingFee != 5000 {
+		t.Errorf("ShippingFee = %d paise, want 5000 (₹50)", cart.ShippingFee)
 	}
 	if cart.MinQty != 1 || cart.MaxQty != 99 {
 		t.Errorf("quantity bounds = %d..%d, want 1..99", cart.MinQty, cart.MaxQty)

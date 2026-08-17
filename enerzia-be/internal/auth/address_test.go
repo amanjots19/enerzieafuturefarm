@@ -17,6 +17,7 @@ func validAddress() auth.Address {
 	return auth.Address{
 		Name:  "Ananya Sharma",
 		Email: "ananya@example.com",
+		Phone: "9876543210",
 		Line1: "12, Anand Residency, MG Road",
 		City:  "Pune",
 		State: "Maharashtra",
@@ -58,6 +59,26 @@ func TestValidateAddressMessagesMatchTheFrontend(t *testing.T) {
 			name:      "email without a dot",
 			mutate:    func(a *auth.Address) { a.Email = "ananya@example" },
 			wantField: "email", wantMessage: "Please enter a valid email for order updates.",
+		},
+		{
+			name:      "missing phone",
+			mutate:    func(a *auth.Address) { a.Phone = "" },
+			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+		},
+		{
+			name:      "phone too short",
+			mutate:    func(a *auth.Address) { a.Phone = "987654321" },
+			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+		},
+		{
+			name:      "phone carries a country code",
+			mutate:    func(a *auth.Address) { a.Phone = "+919876543210" },
+			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+		},
+		{
+			name:      "phone with separators",
+			mutate:    func(a *auth.Address) { a.Phone = "98765 43210" },
+			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
 		},
 		{
 			name:      "street too short",
@@ -130,11 +151,12 @@ func TestValidateAddressReportsFieldsInTheFrontendsOrder(t *testing.T) {
 	}
 
 	// Fixing each in turn should walk the sequence exactly.
-	wantOrder := []string{"name", "email", "line1", "city", "pin"}
+	wantOrder := []string{"name", "email", "phone", "line1", "city", "pin"}
 	addr := auth.Address{}
 	fix := []func(*auth.Address){
 		func(a *auth.Address) { a.Name = "Ananya" },
 		func(a *auth.Address) { a.Email = "a@b.co" },
+		func(a *auth.Address) { a.Phone = "9876543210" },
 		func(a *auth.Address) { a.Line1 = "12, MG Road" },
 		func(a *auth.Address) { a.City, a.State = "Pune", "Maharashtra" },
 		func(a *auth.Address) { a.Pin = "411001" },
@@ -171,7 +193,7 @@ func decodeAddresses(t *testing.T, rec *httptest.ResponseRecorder) addressBody {
 }
 
 const goodAddress = `{
-	"name":"Ananya Sharma","email":"ananya@example.com",
+	"name":"Ananya Sharma","email":"ananya@example.com","phone":"9876543210",
 	"line1":"12, Anand Residency, MG Road",
 	"city":"Pune","state":"Maharashtra","pin":"411001"}`
 
@@ -217,7 +239,7 @@ func TestAddAddressTrimsWhitespace(t *testing.T) {
 	token := signIn(t, h, "9876543210")
 
 	rec := postWithToken(t, h, "/api/v1/me/addresses", token, `{
-		"name":"  Ananya Sharma  ","email":" ananya@example.com ",
+		"name":"  Ananya Sharma  ","email":" ananya@example.com ","phone":" 9876543210 ",
 		"line1":" 12, Anand Residency ","city":" Pune ",
 		"state":" Maharashtra ","pin":" 411001 "}`)
 
@@ -225,7 +247,7 @@ func TestAddAddressTrimsWhitespace(t *testing.T) {
 		t.Fatalf("status = %d, want 201 (%s)", rec.Code, rec.Body.String())
 	}
 	saved := decodeAddresses(t, rec).Data.Address
-	if saved.Name != "Ananya Sharma" || saved.Pin != "411001" {
+	if saved.Name != "Ananya Sharma" || saved.Pin != "411001" || saved.Phone != "9876543210" {
 		t.Errorf("address not trimmed: %+v", saved)
 	}
 }
@@ -236,7 +258,7 @@ func TestSecondAddressDoesNotStealTheDefault(t *testing.T) {
 
 	postWithToken(t, h, "/api/v1/me/addresses", token, goodAddress)
 	rec := postWithToken(t, h, "/api/v1/me/addresses", token, `{
-		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com",
+		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com","phone":"9876543210",
 		"line1":"5, Tech Park Road","city":"Pune","state":"Maharashtra","pin":"411014"}`)
 
 	if rec.Code != http.StatusCreated {
@@ -262,7 +284,7 @@ func TestAskingForDefaultMovesIt(t *testing.T) {
 
 	postWithToken(t, h, "/api/v1/me/addresses", token, goodAddress)
 	rec := postWithToken(t, h, "/api/v1/me/addresses", token, `{
-		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com",
+		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com","phone":"9876543210",
 		"line1":"5, Tech Park Road","city":"Pune","state":"Maharashtra",
 		"pin":"411014","isDefault":true}`)
 
@@ -293,7 +315,7 @@ func TestUpdateAddressReplacesIt(t *testing.T) {
 	created := decodeAddresses(t, postWithToken(t, h, "/api/v1/me/addresses", token, goodAddress)).Data.Address
 
 	rec := putJSON(t, h, "/api/v1/me/addresses/"+created.ID.Hex(), token, `{
-		"name":"Ananya S","email":"ananya@example.com",
+		"name":"Ananya S","email":"ananya@example.com","phone":"9876543210",
 		"line1":"99, New Street Road","city":"Mumbai","state":"Maharashtra","pin":"400001"}`)
 
 	if rec.Code != http.StatusOK {
@@ -339,7 +361,7 @@ func TestDeleteAddressPromotesTheNextDefault(t *testing.T) {
 
 	first := decodeAddresses(t, postWithToken(t, h, "/api/v1/me/addresses", token, goodAddress)).Data.Address
 	postWithToken(t, h, "/api/v1/me/addresses", token, `{
-		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com",
+		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com","phone":"9876543210",
 		"line1":"5, Tech Park Road","city":"Pune","state":"Maharashtra","pin":"411014"}`)
 
 	rec := deleteWithToken(t, h, "/api/v1/me/addresses/"+first.ID.Hex(), token)
@@ -531,13 +553,13 @@ func TestAddressForPicksTheDefaultWhenNoneIsNamed(t *testing.T) {
 
 	saveAddress(t, h, token, goodAddress)
 	office := saveAddress(t, h, token, `{
-		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com",
+		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com","phone":"9876543210",
 		"line1":"5, Tech Park Road","city":"Pune","state":"Maharashtra",
 		"pin":"411014","isDefault":true}`)
 
 	userID := store.users["9876543210"].ID
 
-	got, err := svc.AddressFor(t.Context(), userID, nil)
+	got, _, err := svc.AddressFor(t.Context(), userID, nil)
 	if err != nil {
 		t.Fatalf("AddressFor(nil) error = %v", err)
 	}
@@ -554,13 +576,13 @@ func TestAddressForHonoursAnExplicitChoice(t *testing.T) {
 
 	home := saveAddress(t, h, token, goodAddress)
 	saveAddress(t, h, token, `{
-		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com",
+		"label":"Office","name":"Ananya Sharma","email":"ananya@example.com","phone":"9876543210",
 		"line1":"5, Tech Park Road","city":"Pune","state":"Maharashtra",
 		"pin":"411014","isDefault":true}`)
 
 	userID := store.users["9876543210"].ID
 
-	got, err := svc.AddressFor(t.Context(), userID, &home.ID)
+	got, _, err := svc.AddressFor(t.Context(), userID, &home.ID)
 	if err != nil {
 		t.Fatalf("AddressFor(home) error = %v", err)
 	}
@@ -579,7 +601,7 @@ func TestAddressForRejectsAnUnknownID(t *testing.T) {
 	userID := store.users["9876543210"].ID
 	other := bson.NewObjectID()
 
-	if _, err := svc.AddressFor(t.Context(), userID, &other); !errors.Is(err, auth.ErrAddressNotFound) {
+	if _, _, err := svc.AddressFor(t.Context(), userID, &other); !errors.Is(err, auth.ErrAddressNotFound) {
 		t.Errorf("AddressFor() error = %v, want ErrAddressNotFound", err)
 	}
 }
@@ -592,7 +614,7 @@ func TestAddressForWithNoAddressesAtAll(t *testing.T) {
 
 	userID := store.users["9876543210"].ID
 
-	if _, err := svc.AddressFor(t.Context(), userID, nil); !errors.Is(err, auth.ErrAddressNotFound) {
+	if _, _, err := svc.AddressFor(t.Context(), userID, nil); !errors.Is(err, auth.ErrAddressNotFound) {
 		t.Errorf("AddressFor() error = %v, want ErrAddressNotFound", err)
 	}
 }
@@ -609,7 +631,7 @@ func TestAddressForFallsBackWhenNoneIsFlagged(t *testing.T) {
 	u.Addresses[0].IsDefault = false
 	store.users["9876543210"] = u
 
-	got, err := svc.AddressFor(t.Context(), u.ID, nil)
+	got, _, err := svc.AddressFor(t.Context(), u.ID, nil)
 	if err != nil {
 		t.Fatalf("AddressFor() error = %v", err)
 	}

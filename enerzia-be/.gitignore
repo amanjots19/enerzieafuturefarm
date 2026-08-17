@@ -5,6 +5,7 @@
 
 # build artefacts
 /bin/
+/api
 coverage.out
 coverage.html
 
@@ -12,3 +13,8 @@ coverage.html
 .DS_Store
 .idea/
 .vscode/
+
+# Timestamped .env backups. `.env` alone does not match these, and one of them
+# was one `git add -A` away from putting MONGO_URI and the Razorpay keys in the
+# repository.
+.env.bak-*
