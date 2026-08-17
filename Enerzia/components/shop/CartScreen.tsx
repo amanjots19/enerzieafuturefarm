@@ -1,139 +1,10 @@
-import { addressDTOSummary, freeShipHint, rupeeFromPaise, validateAddress } from '@/lib/shop/pricing';
+import { freeShipHint, rupeeFromPaise } from '@/lib/shop/pricing';
 import type { ShopActions } from '@/app/shop/useShop';
 import type { ShopAction } from '@/lib/shop/reducer';
-import type { Address, AddressDTO, ShopState } from '@/lib/shop/types';
+import type { ShopState } from '@/lib/shop/types';
 
-import { ErrorText, Field } from './controls';
-
-function AddressForm({
-  state,
-  dispatch,
-  actions,
-  hasExisting,
-}: {
-  state: ShopState;
-  dispatch: (a: ShopAction) => void;
-  actions: ShopActions;
-  hasExisting: boolean;
-}) {
-  const addrSaving = state.pending.addressSave;
-
-  const addrField = (field: keyof Address, label: string, placeholder: string) => (
-    <Field
-      id={`f-addr-${field}`}
-      label={label}
-      value={state.addr[field]}
-      placeholder={placeholder}
-      inputMode={field === 'pin' ? 'numeric' : field === 'email' ? 'email' : 'text'}
-      onChange={(value) => dispatch({ type: 'setAddr', field, value })}
-      error={state.addrFieldErrors[field]}
-    />
-  );
-
-  const handleSave = async () => {
-    const clientErr = validateAddress(state.addr);
-    if (clientErr) {
-      dispatch({ type: 'setAddrFieldError', field: clientErr.field, message: clientErr.message });
-      return;
-    }
-    await actions.saveAddress(state.addr);
-  };
-
-  return (
-    <div className="addr-form">
-      <div className="field-grid-2">
-        {addrField('name', 'Full name', 'Ananya Sharma')}
-        {addrField('email', 'Email for order updates', 'you@email.com')}
-      </div>
-      <div style={{ marginTop: 14 }}>
-        {addrField('line1', 'Flat, house no., building, street', '12, Anand Residency, MG Road')}
-      </div>
-      <div className="field-grid-3" style={{ marginTop: 14 }}>
-        {addrField('city', 'City', 'Pune')}
-        {addrField('state', 'State', 'Maharashtra')}
-        {addrField('pin', 'PIN code', '411001')}
-      </div>
-      <div className="addr-form-actions">
-        <button
-          className="btn btn-primary"
-          type="button"
-          disabled={addrSaving}
-          onClick={() => void handleSave()}
-        >
-          {addrSaving
-            ? 'Saving…'
-            : state.editingAddressId
-            ? 'Update address'
-            : 'Save address'}
-        </button>
-        {hasExisting && (
-          <button
-            className="btn btn-ghost"
-            type="button"
-            disabled={addrSaving}
-            onClick={() => dispatch({ type: 'hideAddressForm' })}
-          >
-            Cancel
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AddressCard({
-  addr,
-  selected,
-  addrDeleting,
-  onSelect,
-  onEdit,
-  onDelete,
-}: {
-  addr: AddressDTO;
-  selected: boolean;
-  addrDeleting: boolean;
-  onSelect: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className={`addr-opt${selected ? ' addr-opt--selected' : ''}`}>
-      {/* label wraps the radio + visual dot + text — clicking anywhere here selects the address */}
-      <label className="addr-opt-main">
-        <input
-          className="addr-radio"
-          type="radio"
-          name="delivery-address"
-          checked={selected}
-          onChange={onSelect}
-        />
-        <span className="addr-dot" aria-hidden="true" />
-        <span className="addr-body">
-          <span className="addr-label">{addr.name}</span>
-          <span className="addr-sub">{addressDTOSummary(addr)}</span>
-        </span>
-      </label>
-      {/* buttons are siblings of the label, never descendants of an interactive element */}
-      <span className="addr-actions">
-        <button
-          className="btn btn-ghost addr-action-btn"
-          type="button"
-          onClick={onEdit}
-        >
-          Edit
-        </button>
-        <button
-          className="btn btn-ghost addr-action-btn"
-          type="button"
-          disabled={addrDeleting}
-          onClick={onDelete}
-        >
-          Delete
-        </button>
-      </span>
-    </div>
-  );
-}
+import { ErrorText } from './controls';
+import { AddressCard, AddressForm } from './address';
 
 export function CartScreen({
   state,
@@ -258,6 +129,7 @@ export function CartScreen({
                   {state.addresses.map((addr) => (
                     <AddressCard
                       key={addr.id}
+                      mode="cart"
                       addr={addr}
                       selected={state.selectedAddressId === addr.id}
                       addrDeleting={addrDeleting}

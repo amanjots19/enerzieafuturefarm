@@ -16,7 +16,7 @@ import type {
 
 export type { AddressDTO, CartDTO, CartLineDTO, CheckoutData, FreeShippingDTO, OrderDTO, OrderLineDTO, OrderTotalsDTO, PaymentDTO, ProductDetailData, ProductDTO, TrustTileDTO, UserDTO };
 
-export type Screen = 'shop' | 'pdp' | 'login' | 'cart' | 'review' | 'done' | 'orders' | 'addresses' | 'contact';
+export type Screen = 'shop' | 'pdp' | 'login' | 'cart' | 'review' | 'done' | 'orders' | 'addresses';
 
 /** Screens the auth gate can send a shopper to once they sign in. */
 export type GatedScreen = Extract<Screen, 'cart' | 'review'>;
@@ -71,6 +71,8 @@ export interface CartLine {
 export interface Address {
   name: string;
   email: string;
+  /** Delivery contact for this address, 10 digits. Required by the API on write. */
+  phone: string;
   line1: string;
   city: string;
   state: string;

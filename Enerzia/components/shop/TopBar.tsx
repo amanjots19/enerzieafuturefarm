@@ -1,9 +1,17 @@
-import Image from 'next/image';
-
+import { SiteHeader, type NavItem } from '@/components/SiteHeader';
 import { AccountControl } from '@/components/shop/AccountControl';
 import type { ShopAction } from '@/lib/shop/reducer';
 import type { UserDTO } from '@/lib/shop/types';
 
+/**
+ * The shop's header. A thin configuration of the shared SiteHeader rather than
+ * a second header — the two used to be a full-width bar and a rounded pill,
+ * which read as two different sites.
+ *
+ * What is shop-specific lives here: the "Home" entry (absent on the homepage,
+ * which IS home), a "Shop" entry that dispatches instead of navigating because
+ * this is a SPA, and the account control and cart button in the right slot.
+ */
 export function TopBar({
   count,
   booting,
@@ -17,61 +25,47 @@ export function TopBar({
   signOut: () => void;
   dispatch: (a: ShopAction) => void;
 }) {
+  // Two entries out of the shop: the landing page, labelled "About us" rather
+  // than "Home" because the label describes what is there, and the farm page.
+  // Moving between the shop's own screens is handled by the in-screen
+  // "← Back to shop" links, not the header.
+  const nav: NavItem[] = [
+    { label: 'About us', href: '/' },
+    { label: 'Our Farm', href: '/farm' },
+  ];
+
   return (
-    <div className="topbar-wrap">
-      <div className="topbar">
-        <button
-          className="topbar-brand"
-          type="button"
-          onClick={() => dispatch({ type: 'go', screen: 'shop' })}
-          aria-label="Enerzeia Future Farm — go to shop"
-        >
-          <span className="brand-mark">
-            <Image src="/assets/enerzeia-logo.png" alt="" width={30} height={30} />
-          </span>
-          <span className="brand-text">
-            <span className="brand-name">ENERZEIA</span>
-            <span className="brand-sub">FUTURE FARM</span>
-          </span>
-        </button>
-
-        {/* Shop is the only wired link in the design; Benefits and Our Farm are
-            placeholders (href="#" upstream) awaiting real routes. */}
-        <nav className="topbar-links" aria-label="Primary">
-          <button type="button" onClick={() => dispatch({ type: 'go', screen: 'shop' })}>
-            Shop
-          </button>
-          <a href="#">Benefits</a>
-          <a href="#">Our Farm</a>
-        </nav>
-
-        <AccountControl user={user} dispatch={dispatch} signOut={signOut} />
-
-        <button
-          className="btn btn-cart"
-          type="button"
-          disabled={booting}
-          onClick={() => dispatch({ type: 'requireAuth', dest: 'cart' })}
-        >
-          <svg
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+    <SiteHeader
+      nav={nav}
+      right={
+        <>
+          <AccountControl user={user} dispatch={dispatch} signOut={signOut} />
+          <button
+            className="btn btn-cart"
+            type="button"
+            disabled={booting}
+            onClick={() => dispatch({ type: 'requireAuth', dest: 'cart' })}
           >
-            <circle cx="8" cy="21" r="1" />
-            <circle cx="19" cy="21" r="1" />
-            <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-          </svg>
-          Cart
-          {!booting && count > 0 && <span className="cart-badge">{count}</span>}
-        </button>
-      </div>
-    </div>
+            <svg
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="8" cy="21" r="1" />
+              <circle cx="19" cy="21" r="1" />
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+            </svg>
+            <span className="btn-cart-label">Cart</span>
+            {!booting && count > 0 && <span className="cart-badge">{count}</span>}
+          </button>
+        </>
+      }
+    />
   );
 }

@@ -136,14 +136,21 @@ export function SelectionPrompt({
 export function Banner({
   message,
   onDismiss,
+  onRetry,
 }: {
   message: string | null;
   onDismiss: () => void;
+  onRetry?: () => void;
 }) {
   if (message === null) return null;
   return (
     <div className="banner" role="alert">
       <span className="banner-msg">{message}</span>
+      {onRetry && (
+        <button className="banner-retry" type="button" onClick={onRetry}>
+          Retry
+        </button>
+      )}
       <button className="banner-close" type="button" aria-label="Dismiss" onClick={onDismiss}>
         ×
       </button>

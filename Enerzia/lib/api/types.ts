@@ -3,6 +3,13 @@
  * Money fields are int64 paise; never convert them inside this module.
  */
 
+/** A product photograph stored in Cloudinary. `alt` is absent when empty (omitempty). */
+export interface ImageDTO {
+  url: string;
+  publicId: string;
+  alt?: string;
+}
+
 /** One product from GET /products or GET /products/{id}. */
 export interface ProductDTO {
   id: string;
@@ -14,6 +21,8 @@ export interface ProductDTO {
   blurb: string;
   /** CSS gradient standing in for a product photograph. */
   grad: string;
+  /** Cloudinary photographs. Empty array when none uploaded yet. */
+  images: ImageDTO[];
   /** paise */
   mrp: number;
   /** paise */
@@ -131,6 +140,12 @@ export interface AddressDTO {
   label?: string;
   name: string;
   email: string;
+  /**
+   * Delivery contact for this address — the number a courier calls at the door,
+   * not the account's sign-in number. Optional because addresses saved before
+   * the field existed have none; the API requires it on every write.
+   */
+  phone?: string;
   line1: string;
   city: string;
   state: string;

@@ -18,7 +18,15 @@ import type {
   UserDTO,
 } from './types';
 
-const emptyAddr: Address = { name: '', email: '', line1: '', city: '', state: '', pin: '' };
+const emptyAddr: Address = {
+  name: '',
+  email: '',
+  phone: '',
+  line1: '',
+  city: '',
+  state: '',
+  pin: '',
+};
 
 export type ShopAction =
   | { type: 'go'; screen: Screen }
@@ -59,6 +67,8 @@ export type ShopAction =
   | { type: 'paymentCancelled'; message: string }
   /** Signals that the boot sequence has settled. */
   | { type: 'bootDone' }
+  /** Re-arms the booting state before a retry; clears the stale error banner. */
+  | { type: 'bootStart' }
   /** Clears the signed-in user; fired by the global 401 hook. */
   | { type: 'signOut' }
   /** Replaces the orders list after GET /orders. */
@@ -136,7 +146,13 @@ export function shopReducer(state: ShopState, action: ShopAction): ShopState {
       };
 
     case 'setAddr': {
-      const value = action.field === 'pin' ? digits(action.value, 6) : action.value;
+      // Numeric fields are stripped and capped as typed. Phone uses exactly the
+      // same rule as the sign-in number (digits, first 10) so the two fields
+      // behave identically — including that a pasted "+91…" keeps the leading
+      // 91 and drops the last two digits, which the shopper can see and fix.
+      let value = action.value;
+      if (action.field === 'pin') value = digits(action.value, 6);
+      if (action.field === 'phone') value = digits(action.value, 10);
       const addrFieldErrors = { ...state.addrFieldErrors };
       delete addrFieldErrors[action.field];
       return { ...state, addr: { ...state.addr, [action.field]: value }, addrFieldErrors };
@@ -164,7 +180,7 @@ export function shopReducer(state: ShopState, action: ShopAction): ShopState {
     case 'trustLoaded': {
       const pending: Record<RequestKey, boolean> = { ...state.pending };
       pending['trust'] = false;
-      return { ...state, pending, trust: action.tiles, banner: null };
+      return { ...state, pending, trust: action.tiles };
     }
 
     case 'productsLoaded': {
@@ -214,6 +230,9 @@ export function shopReducer(state: ShopState, action: ShopAction): ShopState {
 
     case 'bootDone':
       return { ...state, booting: false };
+
+    case 'bootStart':
+      return { ...state, booting: true, banner: null };
 
     case 'signOut':
       return {
@@ -332,6 +351,9 @@ export function shopReducer(state: ShopState, action: ShopAction): ShopState {
           addr: {
             name: existing.name,
             email: existing.email,
+            // Absent on addresses saved before the field existed. Editing one
+            // is exactly when the shopper supplies it.
+            phone: existing.phone ?? '',
             line1: existing.line1,
             city: existing.city,
             state: existing.state,

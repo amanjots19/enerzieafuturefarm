@@ -128,6 +128,8 @@ export interface ShopActions {
   saveAddress: (addr: Address) => Promise<void>;
   /** Deletes an address and refreshes the list. */
   deleteAddress: (id: string) => Promise<void>;
+  /** Promotes an address to the default by id, leaving all other fields unchanged. */
+  setDefaultAddress: (id: string) => Promise<void>;
   /**
    * Exchanges an MSG91 widget access token for our session JWT, then runs the
    * same post-sign-in sequence as verifyOtp: load cart + addresses, replay the
@@ -149,6 +151,12 @@ export interface ShopActions {
    * both paths stay in sync.
    */
   signOut: () => void;
+  /**
+   * Re-runs the boot sequence (trust tiles, products, session restore). Safe to
+   * call multiple times — the individual loaders are inflight-guarded. Dispatches
+   * bootStart first to re-arm the booting state and clear the stale banner.
+   */
+  retryBoot: () => void;
 }
 
 /**
@@ -428,10 +436,21 @@ export function useShop(): {
     }
   }, [loadCart, loadAddresses]);
 
-  // Boot effect: load trust tiles, full product list, and restore any existing
-  // session in parallel. Also loads the offline cart buffer from localStorage.
-  // The booted ref ensures exactly one boot even under React StrictMode's
-  // double-invoke.
+  /**
+   * Runs the boot sequence: trust tiles, products and session restore in
+   * parallel. Safe to call on retry — each loader is inflight-guarded.
+   * Dispatches bootStart first to re-arm booting state and clear the banner.
+   */
+  const runBoot = useCallback(() => {
+    dispatch({ type: 'bootStart' });
+    void Promise.all([loadTrust(), loadProducts(), restoreSession()]).finally(() =>
+      dispatch({ type: 'bootDone' }),
+    );
+  }, [loadTrust, loadProducts, restoreSession]);
+
+  // Boot effect: runs exactly once even under React 19 StrictMode's
+  // double-invoke. The booted ref is the guard — do NOT reset it on retry;
+  // call runBoot() directly instead so StrictMode protection stays intact.
   useEffect(() => {
     if (booted.current) return;
     booted.current = true;
@@ -442,10 +461,8 @@ export function useShop(): {
       dispatch({ type: 'setCartBuffer', buffer: storedBuffer });
     }
 
-    void Promise.all([loadTrust(), loadProducts(), restoreSession()]).finally(() =>
-      dispatch({ type: 'bootDone' }),
-    );
-  }, [loadTrust, loadProducts, restoreSession]);
+    runBoot();
+  }, [runBoot]);
 
   /** POST /auth/otp/request with the phone currently in state. */
   const sendOtp = useCallback(async () => {
@@ -762,6 +779,7 @@ export function useShop(): {
         const body = {
           name: addr.name,
           email: addr.email,
+          phone: addr.phone,
           line1: addr.line1,
           city: addr.city,
           state: addr.state,
@@ -803,6 +821,48 @@ export function useShop(): {
       }
     },
     [state.editingAddressId, loadAddresses],
+  );
+
+  /** Promotes an address to the default without changing any other field. */
+  const setDefaultAddress = useCallback(
+    async (id: string) => {
+      const addr = state.addresses.find((a) => a.id === id);
+      if (!addr) return;
+      const key: RequestKey = 'addressSave';
+      if (inflight.current.has(key)) return;
+      inflight.current.add(key);
+      dispatch({ type: 'reqStart', key });
+      try {
+        const body = {
+          name: addr.name,
+          email: addr.email,
+          phone: addr.phone,
+          line1: addr.line1,
+          city: addr.city,
+          state: addr.state,
+          pin: addr.pin,
+          isDefault: true,
+        };
+        const data = await apiUpdateAddress(id, body);
+        dispatch({ type: 'addressSaved', address: data.address });
+        await loadAddresses();
+      } catch (e) {
+        dispatch({
+          type: 'reqFail',
+          key,
+          message: isNetworkError(e)
+            ? 'Unable to reach the server. Please check your connection.'
+            : isApiError(e)
+            ? e.message
+            : e instanceof Error
+            ? e.message
+            : 'Something went wrong.',
+        });
+      } finally {
+        inflight.current.delete(key);
+      }
+    },
+    [state.addresses, loadAddresses],
   );
 
   /** Deletes an address; server returns the remaining list. */
@@ -956,7 +1016,11 @@ export function useShop(): {
           email: selectedAddr?.email,
         },
         notes: { orderId },
-        theme: { color: '#0e6b52' },
+        // Razorpay's SDK takes a literal hex — it cannot read a CSS variable,
+        // so this is the one place the accent must be duplicated. Keep it in
+        // step with --color-accent in styles/shop.css or the payment sheet
+        // renders in the old palette.
+        theme: { color: '#0d5540' },
         handler: (response) => {
           // MUST be first — ondismiss fires AFTER handler when the sheet closes.
           settled = true;
@@ -1043,9 +1107,11 @@ export function useShop(): {
     loadAddresses,
     saveAddress,
     deleteAddress,
+    setDefaultAddress,
     openCheckout,
     loadOrders,
     signOut: performSignOut,
+    retryBoot: runBoot,
   };
   return { state, dispatch, actions };
 }

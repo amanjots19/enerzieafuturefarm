@@ -1,11 +1,51 @@
 import Image from 'next/image';
+import { useEffect, useState } from 'react';
 
 import type { ShopActions } from '@/app/shop/useShop';
+import type { ImageDTO } from '@/lib/api/types';
 import { FILTERS } from '@/lib/shop/data';
 import type { ShopAction } from '@/lib/shop/reducer';
 import type { ShopState } from '@/lib/shop/types';
 
 import { Pill, PriceRow } from './controls';
+
+function CardArt({
+  image,
+  grad,
+  name,
+  form,
+  onClick,
+}: {
+  image: ImageDTO | undefined;
+  grad: string;
+  name: string;
+  form: string;
+  onClick: () => void;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => { setImgFailed(false); }, [image?.url]);
+  const showGrad = !image || imgFailed;
+  return (
+    <button
+      className="pcard-art"
+      type="button"
+      style={showGrad ? { background: grad } : undefined}
+      onClick={onClick}
+      aria-label={`View ${name}`}
+    >
+      {image && !imgFailed && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="pcard-art-img"
+          src={image.url}
+          alt={image.alt || name}
+          onError={() => setImgFailed(true)}
+        />
+      )}
+      <span className="tag">{form}</span>
+    </button>
+  );
+}
 
 export function ShopScreen({
   state,
@@ -40,7 +80,7 @@ export function ShopScreen({
           <div className="tagrow">
             <span className="tag tag-accent-2">FSSAI licensed</span>
             <span className="tag tag-accent">Third-party lab tested</span>
-            <span className="tag tag-neutral">60%+ plant protein</span>
+            <span className="tag tag-neutral">62%+ plant protein</span>
           </div>
         </div>
         <div className="hero-art">
@@ -77,17 +117,17 @@ export function ShopScreen({
             ? state.cartBuffer.find((i) => i.productId === p.id)
             : undefined;
 
+          const primaryImage = p.images[0]; // ImageDTO | undefined; undefined when images: []
+
           return (
             <article className={`pcard${p.soldOut ? ' pcard--sold-out' : ''}`} key={p.id}>
-              <button
-                className="pcard-art"
-                type="button"
-                style={{ background: p.grad }}
+              <CardArt
+                image={primaryImage}
+                grad={p.grad}
+                name={p.name}
+                form={p.form}
                 onClick={() => dispatch({ type: 'openPdp', id: p.id })}
-                aria-label={`View ${p.name}`}
-              >
-                <span className="tag">{p.form}</span>
-              </button>
+              />
 
               <div className="pcard-body">
                 <div>

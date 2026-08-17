@@ -29,10 +29,6 @@ function statusClass(s: string): string {
   return 'order-status--muted';
 }
 
-function shortId(orderId: string): string {
-  return '#' + orderId.slice(-8).toUpperCase();
-}
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', {
     day: 'numeric',
@@ -61,7 +57,7 @@ function OrderRow({
         aria-controls={detailId}
         onClick={onToggle}
       >
-        <span className="order-summary-id">{shortId(order.orderId)}</span>
+        <span className="order-summary-id">{order.orderId}</span>
         <span className="order-summary-date">{formatDate(order.createdAt)}</span>
         <span className="order-summary-total">{rupeeFromPaise(order.totals.total)}</span>
         <span className={`order-status ${statusClass(order.status)}`}>
@@ -83,7 +79,7 @@ function OrderRow({
                   <span className="order-line-name">
                     {line.name}
                     <span className="order-line-meta">
-                      {' '}· {line.form}{line.grad ? `, ${line.grad}` : ''} × {line.qty}
+                      {' '}· {line.form} × {line.qty}
                     </span>
                   </span>
                   <span>{rupeeFromPaise(line.lineTotal)}</span>

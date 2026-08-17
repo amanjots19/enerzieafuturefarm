@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 
+import { AddressesScreen } from '@/components/shop/AddressesScreen';
 import { CartScreen } from '@/components/shop/CartScreen';
 import { DoneScreen } from '@/components/shop/DoneScreen';
 import { LoginScreen } from '@/components/shop/LoginScreen';
@@ -48,6 +49,11 @@ export function ShopClient() {
     if (state.screen === 'orders') void actions.loadOrders();
   }, [state.screen, actions.loadOrders]);
 
+  // Refresh the address list each time the shopper navigates to the addresses screen.
+  useEffect(() => {
+    if (state.screen === 'addresses') void actions.loadAddresses();
+  }, [state.screen, actions.loadAddresses]);
+
   return (
     <div className="shop-shell">
       <TopBar
@@ -61,8 +67,12 @@ export function ShopClient() {
         signOut={actions.signOut}
         dispatch={dispatch}
       />
-      <Banner message={state.banner} onDismiss={() => dispatch({ type: 'clearBanner' })} />
-      {!state.user && state.cartBuffer.length > 0 && (
+      <Banner
+        message={state.banner}
+        onDismiss={() => dispatch({ type: 'clearBanner' })}
+        onRetry={state.products.length === 0 && !state.booting ? actions.retryBoot : undefined}
+      />
+      {!state.user && state.cartBuffer.length > 0 && (state.screen === 'shop' || state.screen === 'pdp') && (
         <SelectionPrompt
           count={state.cartBuffer.reduce((s, i) => s + i.qty, 0)}
           onGoToCart={() => dispatch({ type: 'requireAuth', dest: 'cart' })}
@@ -131,16 +141,7 @@ export function ShopClient() {
           <OrdersScreen state={state} dispatch={dispatch} actions={actions} />
         )}
         {state.screen === 'addresses' && (
-          <div className="wrap-sm screen">
-            <h1 className="page-title">Saved addresses</h1>
-            <p>Coming soon.</p>
-          </div>
-        )}
-        {state.screen === 'contact' && (
-          <div className="wrap-sm screen">
-            <h1 className="page-title">Contact us</h1>
-            <p>Coming soon.</p>
-          </div>
+          <AddressesScreen state={state} dispatch={dispatch} actions={actions} />
         )}
       </main>
     </div>

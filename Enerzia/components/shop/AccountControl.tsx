@@ -51,18 +51,6 @@ export function AccountControl({
     first?.focus();
   }, [open]);
 
-  if (!user) {
-    return (
-      <button
-        type="button"
-        className="btn-account-signin"
-        onClick={() => dispatch({ type: 'requireAuth', dest: 'cart' })}
-      >
-        Sign in
-      </button>
-    );
-  }
-
   function handleArrowKey(e: React.KeyboardEvent<HTMLDivElement>) {
     const items = Array.from(
       menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
@@ -77,7 +65,7 @@ export function AccountControl({
     }
   }
 
-  function navigate(screen: 'orders' | 'addresses' | 'contact') {
+  function navigate(screen: 'orders' | 'addresses') {
     setOpen(false);
     dispatch({ type: 'go', screen });
   }
@@ -122,40 +110,48 @@ export function AccountControl({
           className="account-menu"
           onKeyDown={handleArrowKey}
         >
-          <div className="account-menu-header">+91 {user.phone}</div>
-          <button
-            type="button"
-            role="menuitem"
-            className="account-menu-item"
-            onClick={() => navigate('orders')}
-          >
-            My orders
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="account-menu-item"
-            onClick={() => navigate('addresses')}
-          >
-            Saved addresses
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="account-menu-item"
-            onClick={() => navigate('contact')}
-          >
-            Contact us
-          </button>
-          <div role="separator" className="account-menu-sep" />
-          <button
-            type="button"
-            role="menuitem"
-            className="account-menu-item account-menu-signout"
-            onClick={handleSignOut}
-          >
-            Sign out
-          </button>
+          {user ? (
+            <>
+              <div className="account-menu-header">+91 {user.phone}</div>
+              <button
+                type="button"
+                role="menuitem"
+                className="account-menu-item"
+                onClick={() => navigate('orders')}
+              >
+                My orders
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="account-menu-item"
+                onClick={() => navigate('addresses')}
+              >
+                Saved addresses
+              </button>
+              <div role="separator" className="account-menu-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="account-menu-item account-menu-signout"
+                onClick={handleSignOut}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              className="account-menu-item"
+              onClick={() => {
+                setOpen(false);
+                dispatch({ type: 'requireAuth', dest: 'cart' });
+              }}
+            >
+              Sign in
+            </button>
+          )}
         </div>
       )}
     </div>

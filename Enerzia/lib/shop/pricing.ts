@@ -62,6 +62,14 @@ export function validateAddress(
     return { field: 'name', message: 'Please enter the name for delivery.' };
   if (!/^\S+@\S+\.\S+$/.test(a.email))
     return { field: 'email', message: 'Please enter a valid email for order updates.' };
+  // Order and wording mirror the API exactly (product.md §3.4) — a client that
+  // validated in a different order would show a different message than the
+  // server would for the same input.
+  if (!/^\d{10}$/.test(a.phone))
+    return {
+      field: 'phone',
+      message: 'Please enter a valid 10-digit mobile number for delivery.',
+    };
   if (a.line1.trim().length < 6)
     return { field: 'line1', message: 'Please enter your full street address.' };
   if (!a.city.trim() || !a.state.trim())
@@ -119,7 +127,7 @@ export const initialState: ShopState = {
   addrFieldErrors: {},
   addrError: '',
   next: 'cart',
-  addr: { name: '', email: '', line1: '', city: '', state: '', pin: '' },
+  addr: { name: '', email: '', phone: '', line1: '', city: '', state: '', pin: '' },
   checkout: null,
   placedOrder: null,
   paymentCancelled: null,

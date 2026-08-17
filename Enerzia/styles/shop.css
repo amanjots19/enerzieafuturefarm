@@ -1,48 +1,60 @@
 /* ==========================================================================
-   Enerzeia shop — page layer.
+   Enerzeia site — page layer.
    Loaded after ds/organic.css. The :root block below is the token override
-   carried over verbatim from the design's <helmet> (green spirulina palette,
-   Playfair Display + Figtree), which retheme the Organic component classes.
-   Everything after it is the design's inline styles lifted into classes.
+   that rethemes the Organic component classes.
+
+   Palette source: the Homepage design (cream surfaces + gold second accent).
+   Adopted sitewide 2026-08-13, replacing the earlier white-and-lime shop
+   palette so the homepage and shop read as one brand rather than two.
+
+   The logo's own colours (blue #003078, teal #007890, green #7cba4d) are
+   DELIBERATELY not the site palette — the owner confirmed on 2026-08-14 that
+   the site colours stay as designed and only the brand wordmark follows the
+   logo. Do not "correct" this to match the logo.
+
+   IMPORTANT — the gold accent is not a text colour. --color-accent-2 (#b8933c)
+   on the cream surface does not reach 4.5:1, so it is for decoration only:
+   rules, dots, borders, the large watermark. Gold TEXT must use
+   --color-accent-2-600/700 (#735a24). The design follows this rule; keep it.
    ========================================================================== */
 
 :root {
-  --color-bg: #eef8f0;
-  --color-surface: #ffffff;
+  --color-bg: #eaf5ec;
+  --color-surface: #fbf8f1;
   --color-text: #12291f;
-  --color-accent: #0e6b52;
-  --color-accent-2: #7cb342;
-  --color-divider: color-mix(in srgb, #12291f 14%, transparent);
+  --color-accent: #0d5540;
+  --color-accent-2: #b8933c;
+  --color-divider: color-mix(in srgb, #12291f 13%, transparent);
 
-  --color-accent-100: #e6f4ee;
-  --color-accent-200: #c8e6da;
-  --color-accent-300: #97cdb8;
-  --color-accent-400: #4fa387;
-  --color-accent-500: #0e6b52;
-  --color-accent-600: #0b5843;
-  --color-accent-700: #084434;
-  --color-accent-800: #063326;
-  --color-accent-900: #04211a;
+  --color-accent-100: #e6f2ec;
+  --color-accent-200: #c6e2d6;
+  --color-accent-300: #94c7b1;
+  --color-accent-400: #4a9077;
+  --color-accent-500: #0d5540;
+  --color-accent-600: #0a4534;
+  --color-accent-700: #083628;
+  --color-accent-800: #06291f;
+  --color-accent-900: #041b14;
 
-  --color-accent-2-100: #f1f9e4;
-  --color-accent-2-200: #ddeec6;
-  --color-accent-2-300: #c2e09e;
-  --color-accent-2-400: #9fcd72;
-  --color-accent-2-500: #7cb342;
-  --color-accent-2-600: #649233;
-  --color-accent-2-700: #4c7026;
-  --color-accent-2-800: #35501b;
-  --color-accent-2-900: #223311;
+  --color-accent-2-100: #f8f1de;
+  --color-accent-2-200: #eddfb8;
+  --color-accent-2-300: #dfc98a;
+  --color-accent-2-400: #cbaf5f;
+  --color-accent-2-500: #b8933c;
+  --color-accent-2-600: #735a24;
+  --color-accent-2-700: #735a24;
+  --color-accent-2-800: #523f19;
+  --color-accent-2-900: #332810;
 
-  --color-neutral-100: #f4f8f5;
-  --color-neutral-200: #e6ece8;
-  --color-neutral-300: #d2dbd6;
-  --color-neutral-400: #adbab3;
-  --color-neutral-500: #8a988f;
-  --color-neutral-600: #6b7871;
-  --color-neutral-700: #505a54;
-  --color-neutral-800: #39403b;
-  --color-neutral-900: #232725;
+  --color-neutral-100: #f5f8f5;
+  --color-neutral-200: #e7ece7;
+  --color-neutral-300: #d3dbd5;
+  --color-neutral-400: #aebab1;
+  --color-neutral-500: #87948b;
+  --color-neutral-600: #66736a;
+  --color-neutral-700: #4d574f;
+  --color-neutral-800: #373e39;
+  --color-neutral-900: #222522;
 
   /* next/font supplies the family names via --font-playfair / --font-figtree
      (see app/layout.tsx); the design's literal names are the fallback. */
@@ -50,12 +62,21 @@
   --font-heading-weight: 600;
   --font-body: var(--font-figtree), "Figtree", system-ui, sans-serif;
 
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #12291f 10%, transparent);
-  --shadow-md: 0 6px 20px color-mix(in srgb, #12291f 10%, transparent);
-  --shadow-lg: 0 18px 44px color-mix(in srgb, #12291f 16%, transparent);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #12291f 9%, transparent);
+  --shadow-md: 0 6px 20px color-mix(in srgb, #12291f 9%, transparent);
+  --shadow-lg: 0 20px 50px color-mix(in srgb, #12291f 15%, transparent);
 
   /* The design hardcodes this deep green on ~20 headings; named here instead. */
-  --brand-ink: #0d3a2c;
+  --brand-ink: #083628;
+
+  /* The dark panel used by the footer and any inverted surface. Named so the
+     footer stops carrying its own private hex values. */
+  --panel-ink: #083628;
+  --panel-on: #e9f3ec;
+  --panel-on-muted: rgba(233, 243, 236, .75);
+  --panel-rule: rgba(233, 243, 236, .14);
+  --panel-chip: rgba(251, 248, 241, .09);
+  --panel-chip-border: rgba(233, 243, 236, .16);
 }
 
 body { margin: 0; background: var(--color-bg); }
@@ -73,11 +94,13 @@ a:hover { color: var(--color-accent-700); }
 
 .shop-shell {
   min-height: 100vh;
-  background: linear-gradient(160deg, #eef8f0 0%, #e2f2e6 42%, #eef8f0 100%);
+  display: flex; flex-direction: column;
+  background: linear-gradient(160deg, var(--color-bg) 0%, var(--color-accent-100) 42%, var(--color-bg) 100%);
   font-family: var(--font-body);
   color: var(--color-text);
-  padding-bottom: 80px;
 }
+
+main { flex: 1; }
 
 .wrap { max-width: 1180px; margin: 0 auto; padding: 26px 24px 0; }
 .wrap-md { max-width: 1120px; margin: 0 auto; padding: 26px 24px 0; }
@@ -88,65 +111,56 @@ a:hover { color: var(--color-accent-700); }
 
 /* --- top bar ----------------------------------------------------------- */
 
-.topbar-wrap {
-  position: sticky; top: 0; z-index: 40;
-  padding: 14px 20px;
-  backdrop-filter: blur(10px);
+/* The swirl mark. No ring or disc behind it — the artwork already carries the
+   brand gradient, and enclosing it would compete with the loops. Height drives
+   the size; the 306x346 aspect gives roughly 34px wide at 38px tall. */
+.brand-mark { display: flex; align-items: center; flex: none; }
+.brand-mark img {
+  height: 38px; width: auto;
+  display: block;
+  object-fit: contain;
 }
-.topbar {
-  max-width: 1180px; margin: 0 auto;
-  display: flex; align-items: center; gap: 24px;
-  background: rgba(255, 255, 255, .92);
-  border-radius: 999px;
-  padding: 12px 14px 12px 22px;
-  box-shadow: var(--shadow-sm);
-}
-.topbar-brand {
-  display: flex; align-items: center; gap: 10px;
-  background: none; border: 0; padding: 0;
-  font: inherit; color: inherit; cursor: pointer;
-  text-align: left;
-}
-.brand-mark {
-  width: 36px; height: 36px; border-radius: 50%; flex: none;
-  background: conic-gradient(from 200deg, #0e6b52, #1b8fa0, #7cb342, #0e6b52);
-  display: grid; place-items: center;
-}
-.brand-mark img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; }
 .brand-text { line-height: 1; }
 /* The two lines stack, so keep them block-level even as inline elements. */
+/* OPTION C — Rubik 600 italic. Matching the logo's wordmark, which is a bold
+   italic rounded sans. Scoped to the lockup only; headings stay Playfair. */
 .brand-name {
   display: block;
-  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
-  font-size: 17px; letter-spacing: .02em; color: var(--brand-ink);
+  font-family: var(--font-brand), "Rubik", system-ui, sans-serif;
+  font-weight: 600; font-style: italic;
+  font-size: 19px; letter-spacing: 0; color: var(--brand-ink);
   white-space: nowrap;
 }
+/* Title case, like the logo — so the wide tracking that suited all-caps is
+   gone and the size rises to stay legible. */
 .brand-sub {
   display: block;
-  font-size: 8px; letter-spacing: .24em;
-  color: var(--color-neutral-600); margin-top: 3px;
+  font-family: var(--font-brand), "Rubik", system-ui, sans-serif;
+  font-weight: 600; font-style: italic;
+  font-size: 11px; letter-spacing: .01em;
+  color: var(--color-neutral-600); margin-top: 1px;
   white-space: nowrap;
 }
-.topbar-links {
-  margin-left: auto;
-  display: flex; align-items: center; gap: 22px;
-  font-size: 14px;
-}
-.topbar-links a,
-.topbar-links button {
-  text-decoration: none; color: var(--color-neutral-700);
-  background: none; border: 0; padding: 0;
-  font: inherit; cursor: pointer;
-}
-.topbar-links a:hover,
-.topbar-links button:hover { color: var(--color-accent); }
+/* Inverted for the dark footer panel. "Future Farm" is muted, matching the
+   header's treatment — it was gold, which made the footer lockup read as a
+   different mark from the one in the header. */
+.brand-text--dark .brand-name { color: var(--panel-on); }
+.brand-text--dark .brand-sub { color: var(--panel-on-muted); }
+
 .btn-cart {
-  background: var(--brand-ink); color: #fff;
+  background: var(--color-accent); color: var(--color-surface);
   padding: 10px 18px; gap: 9px;
+  border-radius: 999px;
+}
+/* Below 560px the label drops and the button becomes icon + badge, so the
+   header still fits the brand, nav link, account and cart on a phone. */
+@media (max-width: 560px) {
+  .btn-cart-label { display: none; }
+  .btn-cart { padding: 10px 12px; }
 }
 .btn-cart:hover { background: var(--color-accent-700); }
 .cart-badge {
-  background: #7cb342; color: #0d2b16;
+  background: var(--color-accent-2); color: #2a2109;
   border-radius: 999px; min-width: 20px; height: 20px;
   display: inline-grid; place-items: center;
   font-size: 11px; font-weight: 700; padding: 0 6px;
@@ -169,18 +183,11 @@ a:hover { color: var(--color-accent-700); }
   flex: none;
 }
 .btn-account:hover { background: var(--color-accent-200); }
-.btn-account[aria-expanded='true'] { background: var(--color-accent); color: #fff; }
-
-.btn-account-signin {
-  background: none; border: 0; padding: 4px 2px;
-  font: 600 14px/1 var(--font-body); color: var(--color-neutral-700);
-  cursor: pointer; white-space: nowrap;
-}
-.btn-account-signin:hover { color: var(--color-accent); }
+.btn-account[aria-expanded='true'] { background: var(--color-accent); color: var(--color-surface); }
 
 .account-menu {
   position: absolute; top: calc(100% + 10px); right: 0;
-  background: #fff; border-radius: 18px;
+  background: var(--color-surface); border-radius: 18px;
   box-shadow: var(--shadow-md);
   min-width: 210px;
   z-index: 50;
@@ -227,7 +234,7 @@ a:hover { color: var(--color-accent-700); }
 .tagrow .tag { padding: 6px 14px; font-weight: 600; }
 .rule { height: 1px; background: var(--color-divider); }
 .err { font-size: 12.5px; color: #b3261e; }
-.surface { background: #fff; box-shadow: var(--shadow-sm); }
+.surface { background: var(--color-surface); box-shadow: var(--shadow-sm); }
 
 /* --- error banner -------------------------------------------------------- */
 
@@ -239,6 +246,13 @@ a:hover { color: var(--color-accent-700); }
   font-size: 13.5px;
 }
 .banner-msg { flex: 1; }
+.banner-retry {
+  background: none; border: 1px solid currentColor; border-radius: 4px;
+  padding: 3px 10px; cursor: pointer;
+  color: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.4;
+  opacity: .8; flex: none; white-space: nowrap;
+}
+.banner-retry:hover { opacity: 1; }
 .banner-close {
   background: none; border: 0; padding: 4px 6px; cursor: pointer;
   color: inherit; font-size: 18px; line-height: 1;
@@ -284,7 +298,7 @@ a:hover { color: var(--color-accent-700); }
 }
 .hero-art::after {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(circle at 72% 78%, rgba(124, 179, 66, .55), transparent 55%);
+  background: radial-gradient(circle at 72% 78%, rgba(184, 147, 60, .55), transparent 55%);
 }
 .hero-art img { position: relative; width: 100%; height: 100%; object-fit: cover; }
 
@@ -303,20 +317,39 @@ a:hover { color: var(--color-accent-700); }
   gap: 22px;
 }
 .pcard {
-  background: #fff; border-radius: 28px; overflow: hidden;
+  background: var(--color-surface); border-radius: 28px; overflow: hidden;
   box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column;
   transition: box-shadow .25s, transform .25s;
 }
-.pcard:hover { box-shadow: var(--shadow-md); transform: translateY(-3px); }
+/* Gated on a real hover-capable pointer. An unscoped :hover sticks on touch —
+   the card stays zoomed after a tap until you tap something else.
+   z-index lifts the hovered card over its neighbours so the scaled edges are
+   not clipped by the next card in the grid. */
+@media (hover: hover) {
+  .pcard:hover {
+    box-shadow: var(--shadow-md);
+    transform: scale(1.02);
+    position: relative;
+    z-index: 1;
+  }
+  /* The art zooms a little further inside its own clipped frame, so the
+     photograph moves relative to the card rather than with it. */
+  .pcard:hover .pcard-art-img { transform: scale(1.06); }
+}
 .pcard-art {
   position: relative; aspect-ratio: 5/4;
   border: 0; padding: 0; width: 100%; cursor: pointer;
-  display: block;
+  display: block; overflow: hidden;
+}
+.pcard-art-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform .3s ease;
 }
 .pcard-art .tag {
   position: absolute; left: 14px; top: 14px;
-  background: rgba(255, 255, 255, .9); color: var(--brand-ink);
+  background: rgba(251, 248, 241, .9); color: var(--brand-ink);
   font-weight: 600; padding: 4px 11px;
 }
 .pcard-body {
@@ -376,27 +409,27 @@ a:hover { color: var(--color-accent-700); }
 .pill {
   cursor: pointer; border-radius: 999px; padding: 7px 13px;
   font: 600 12.5px/1 var(--font-body);
-  background: #fff; color: var(--color-text);
+  background: var(--color-surface); color: var(--color-text);
   border: 1px solid rgba(18, 41, 31, .16);
   transition: all .18s;
 }
-.pill[aria-pressed='true'] { background: #0e6b52; color: #fff; border-color: #0e6b52; }
+.pill[aria-pressed='true'] { background: var(--color-accent); color: var(--color-surface); border-color: var(--color-accent); }
 .pill-big {
   cursor: pointer; border-radius: 20px; padding: 11px 17px;
   display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
   text-align: left; font-family: var(--font-body); font-size: 14px;
-  background: #fff; color: var(--color-text);
+  background: var(--color-surface); color: var(--color-text);
   border: 1px solid rgba(18, 41, 31, .16);
   transition: all .18s;
 }
-.pill-big[aria-pressed='true'] { background: #0e6b52; color: #fff; border-color: #0e6b52; }
+.pill-big[aria-pressed='true'] { background: var(--color-accent); color: var(--color-surface); border-color: var(--color-accent); }
 .pill-big .pb-label { font-weight: 600; }
 .pill-big .pb-sub { font-size: 12px; opacity: .75; }
 
 /* --- trust strip ------------------------------------------------------- */
 
 .trust {
-  margin-top: 46px; background: #fff; border-radius: 32px;
+  margin-top: 46px; background: var(--color-surface); border-radius: 32px;
   padding: 30px 32px; box-shadow: var(--shadow-sm);
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 26px;
@@ -418,16 +451,28 @@ a:hover { color: var(--color-accent-700); }
 }
 .pdp-art {
   position: relative; aspect-ratio: 1;
-  border-radius: 32px; box-shadow: var(--shadow-md);
+  border-radius: 32px; box-shadow: var(--shadow-md); overflow: hidden;
 }
-.pdp-thumbs { display: flex; gap: 10px; margin-top: 12px; }
-.pdp-thumbs > div { flex: 1; aspect-ratio: 1; border-radius: 18px; }
+.pdp-art-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  border-radius: inherit;
+}
+.pdp-thumbs { display: flex; gap: 10px; margin-top: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pdp-thumbs > div { flex: 0 0 72px; aspect-ratio: 1; border-radius: 18px; }
+.pdp-thumb-btn {
+  flex: 0 0 72px; aspect-ratio: 1; border-radius: 18px;
+  border: 0; padding: 0; cursor: pointer; overflow: hidden;
+  outline-offset: 2px;
+}
+.pdp-thumb-btn--active { outline: 2px solid var(--color-accent); }
+.pdp-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pdp-title { font-size: 40px; line-height: 1.05; margin: 0 0 10px; color: var(--brand-ink); }
 .pdp-rating {
   display: flex; align-items: center; gap: 10px;
   font-size: 13px; color: var(--color-neutral-600); margin-bottom: 18px;
 }
-.pdp-rating .stars { color: #e0a63a; letter-spacing: 2px; }
+.pdp-rating .stars { color: var(--color-accent-2); letter-spacing: 2px; }
 .pdp-blurb {
   font-size: 15.5px; line-height: 1.65;
   color: var(--color-neutral-700); max-width: 52ch;
@@ -443,7 +488,7 @@ a:hover { color: var(--color-accent-700); }
 .pdp-buy { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .qty {
   display: flex; align-items: center; gap: 4px;
-  background: #fff; border-radius: 999px; padding: 5px;
+  background: var(--color-surface); border-radius: 999px; padding: 5px;
   box-shadow: var(--shadow-sm);
 }
 .qty .btn-icon { width: 34px; height: 34px; font-size: 18px; }
@@ -454,13 +499,13 @@ a:hover { color: var(--color-accent-700); }
   gap: 10px; margin-top: 24px;
 }
 .pdp-badge {
-  background: #fff; border-radius: 18px; padding: 13px 15px;
+  background: var(--color-surface); border-radius: 18px; padding: 13px 15px;
   box-shadow: var(--shadow-sm);
 }
 .pdp-badge b { display: block; font-size: 12.5px; color: var(--brand-ink); }
 .pdp-badge span { font-size: 11.5px; color: var(--color-neutral-600); margin-top: 3px; display: block; }
 .panel-nutrition {
-  background: #fff; border-radius: 24px; padding: 22px 24px;
+  background: var(--color-surface); border-radius: 24px; padding: 22px 24px;
   margin-top: 22px; box-shadow: var(--shadow-sm);
 }
 .panel-nutrition h4 { margin: 0 0 12px; font-size: 18px; color: var(--brand-ink); }
@@ -470,7 +515,7 @@ a:hover { color: var(--color-accent-700); }
 /* --- login ------------------------------------------------------------- */
 
 .login-card {
-  background: #fff; border-radius: 32px;
+  background: var(--color-surface); border-radius: 32px;
   padding: 34px 32px; box-shadow: var(--shadow-md);
 }
 .login-card h2 { font-size: 28px; margin: 0 0 8px; color: var(--brand-ink); }
@@ -494,15 +539,15 @@ a:hover { color: var(--color-accent-700); }
 }
 .col-stack { display: flex; flex-direction: column; gap: 14px; }
 .panel {
-  background: #fff; border-radius: 28px; padding: 24px;
+  background: var(--color-surface); border-radius: 28px; padding: 24px;
   box-shadow: var(--shadow-sm);
 }
 .panel h3 { font-size: 21px; margin: 0 0 16px; color: var(--brand-ink); }
-.panel-lines { background: #fff; border-radius: 28px; padding: 8px 20px; box-shadow: var(--shadow-sm); }
+.panel-lines { background: var(--color-surface); border-radius: 28px; padding: 8px 20px; box-shadow: var(--shadow-sm); }
 .aside { position: sticky; top: 96px; }
 
 .empty {
-  background: #fff; border-radius: 28px; padding: 48px 32px;
+  background: var(--color-surface); border-radius: 28px; padding: 48px 32px;
   text-align: center; box-shadow: var(--shadow-sm);
 }
 .empty p { font-size: 16px; color: var(--color-neutral-600); }
@@ -551,16 +596,16 @@ a:hover { color: var(--color-accent-700); }
   display: flex; align-items: center; gap: 12px;
   padding: 14px 16px; border-radius: 20px; cursor: pointer;
   transition: all .18s; width: 100%;
-  border: 1.5px solid rgba(18, 41, 31, .14); background: #fff;
+  border: 1.5px solid rgba(18, 41, 31, .14); background: var(--color-surface);
   font: inherit; color: inherit; text-align: left;
 }
-.pay-opt[aria-checked='true'] { border-color: #0e6b52; background: #e6f4ee; }
+.pay-opt[aria-checked='true'] { border-color: var(--color-accent); background: var(--color-accent-100); }
 .pay-dot {
   width: 17px; height: 17px; border-radius: 50%; flex: none;
   border: 1.5px solid rgba(18, 41, 31, .24);
 }
 .pay-opt[aria-checked='true'] .pay-dot {
-  border-color: #0e6b52; background: #0e6b52; box-shadow: inset 0 0 0 4px #fff;
+  border-color: var(--color-accent); background: var(--color-accent); box-shadow: inset 0 0 0 4px var(--color-surface);
 }
 .pay-label { font-weight: 600; font-size: 14.5px; }
 .pay-sub { font-size: 12.5px; color: var(--color-neutral-600); }
@@ -572,9 +617,9 @@ a:hover { color: var(--color-accent-700); }
   display: flex; align-items: flex-start; gap: 12px;
   padding: 14px 16px; border-radius: 20px;
   transition: all .18s; width: 100%;
-  border: 1.5px solid rgba(18, 41, 31, .14); background: #fff;
+  border: 1.5px solid rgba(18, 41, 31, .14); background: var(--color-surface);
 }
-.addr-opt--selected { border-color: #0e6b52; background: #e6f4ee; }
+.addr-opt--selected { border-color: var(--color-accent); background: var(--color-accent-100); }
 /* Selectable region: the label that contains the hidden radio + dot + text. */
 .addr-opt-main {
   display: flex; align-items: flex-start; gap: 12px; flex: 1; cursor: pointer;
@@ -590,7 +635,7 @@ a:hover { color: var(--color-accent-700); }
   border: 1.5px solid rgba(18, 41, 31, .24);
 }
 .addr-opt--selected .addr-dot {
-  border-color: #0e6b52; background: #0e6b52; box-shadow: inset 0 0 0 4px #fff;
+  border-color: var(--color-accent); background: var(--color-accent); box-shadow: inset 0 0 0 4px var(--color-surface);
 }
 .addr-body { display: flex; flex-direction: column; flex: 1; gap: 2px; }
 .addr-label { font-weight: 600; font-size: 14.5px; }
@@ -598,6 +643,15 @@ a:hover { color: var(--color-accent-700); }
 .addr-actions { display: flex; gap: 4px; flex: none; align-self: flex-start; }
 .addr-action-btn { font-size: 12.5px; padding: 4px 10px; border-radius: 10px; }
 .addr-add-btn { font-size: 13.5px; margin-top: 4px; padding: 10px 16px; }
+.addr-opt-main--static { cursor: default; }
+.addr-default-tag {
+  display: inline-block; margin-left: 8px;
+  padding: 1px 8px; border-radius: 20px;
+  background: var(--color-accent-100); color: var(--color-accent);
+  font-size: 11px; font-weight: 600; vertical-align: middle;
+}
+.addr-empty { padding: 24px 0; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.addr-empty p { margin: 0; color: var(--color-neutral-600); }
 .addr-form { margin-top: 14px; }
 .addr-form-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
 
@@ -621,12 +675,15 @@ a:hover { color: var(--color-accent-700); }
 /* --- confirmation ------------------------------------------------------ */
 
 .done-card {
-  background: #fff; border-radius: 34px; padding: 40px 36px;
+  background: var(--color-surface); border-radius: 34px; padding: 40px 36px;
   box-shadow: var(--shadow-md); text-align: center;
 }
 .done-check {
   width: 72px; height: 72px; border-radius: 50%;
   background: var(--color-accent-2-100);
+  /* The tick renders with stroke="currentColor" so it follows the theme
+     instead of carrying its own hex. */
+  color: var(--color-accent);
   display: grid; place-items: center; margin: 0 auto 20px;
   animation: efPop .4s ease both;
 }
@@ -656,7 +713,7 @@ a:hover { color: var(--color-accent-700); }
 .orders-list { display: flex; flex-direction: column; gap: 10px; }
 
 .order-row {
-  background: #fff; border-radius: 20px; overflow: hidden;
+  background: var(--color-surface); border-radius: 20px; overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
 .order-summary {
@@ -682,7 +739,7 @@ a:hover { color: var(--color-accent-700); }
   white-space: nowrap;
 }
 .order-status--confirmed {
-  background: #e6f4ee; color: var(--color-accent-700);
+  background: var(--color-accent-100); color: var(--color-accent-700);
 }
 .order-status--pending {
   background: #fff8e1; color: #795548;
@@ -713,6 +770,74 @@ a:hover { color: var(--color-accent-700); }
 .order-totals { margin-top: 4px; border-top: 1px solid var(--color-divider); padding-top: 8px; }
 .order-grand-total { font-weight: 700; }
 
+/* --- contact screen ---------------------------------------------------- */
+
+.contact-intro {
+  font-size: 15px; line-height: 1.55;
+  color: var(--color-neutral-700);
+  margin: 0 0 22px;
+}
+
+.contact-card {
+  background: var(--color-surface); border-radius: 32px;
+  padding: 4px 24px;
+  box-shadow: var(--shadow-md);
+}
+
+.contact-row {
+  display: flex; align-items: center; gap: 16px;
+  min-height: 56px; padding: 8px 0;
+  text-decoration: none; color: var(--color-text);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.contact-row:last-child { border-bottom: 0; }
+
+.contact-row:hover .contact-label { color: var(--color-accent); }
+
+.contact-icon {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--color-accent-100); color: var(--color-accent);
+  border: 1.5px solid var(--color-accent-200);
+  display: grid; place-items: center;
+  flex: none;
+}
+
+.contact-text { display: flex; flex-direction: column; gap: 3px; }
+
+.contact-label {
+  font-weight: 600; font-size: 14.5px;
+  color: var(--color-text); transition: color .14s;
+}
+
+.contact-value { font-size: 13px; color: var(--color-neutral-600); }
+
+.contact-order-hint {
+  margin: 16px 0 0;
+  font-size: 13.5px; color: var(--color-neutral-600);
+}
+
+.contact-order-link {
+  background: none; border: 0; padding: 0;
+  font: inherit; color: var(--color-accent);
+  cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+
+.contact-order-link:hover { color: var(--color-accent-700); }
+
+/* --- contact page extras ----------------------------------------------- */
+
+.contact-address {
+  margin: 20px 0 0;
+  font-size: 13.5px; line-height: 1.55; color: var(--color-neutral-600);
+}
+
+.contact-back {
+  margin: 24px 0 0;
+  font-size: 14px;
+}
+
 /* --- responsive: the design's fixed two-column grids collapse ---------- */
 
 @media (max-width: 860px) {
@@ -723,18 +848,1119 @@ a:hover { color: var(--color-accent-700); }
 }
 
 @media (max-width: 640px) {
-  .topbar-links { display: none; }
-  .topbar { gap: 12px; padding: 10px 12px 10px 16px; }
-  .btn-cart { margin-left: auto; padding: 9px 14px; }
   .wrap, .wrap-md { padding: 20px 16px 0; }
   .trust { padding: 24px 22px; border-radius: 26px; }
   .line { flex-wrap: wrap; }
   .line-total { width: auto; margin-left: auto; }
   .done-card, .login-card { padding: 28px 22px; }
+  .pgrid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .screen, .done-check { animation: none; }
-  .pcard, .pill, .pill-big, .pay-opt { transition: none; }
-  .pcard:hover { transform: none; }
+  .pcard, .pill, .pill-big, .pay-opt,
+  .home-moment, .home-review,
+  .pcard-art-img, .home-moment-art { transition: none; }
+  /* Keep the shadow change — it is the affordance; drop only the movement. */
+  .pcard:hover,
+  .home-moment:hover,
+  .home-review:hover,
+  .pcard:hover .pcard-art-img,
+  .home-moment:hover .home-moment-art { transform: none; }
+}
+
+/* =========================================================================
+   Legal pages (Terms, Privacy) and FAQ
+   ========================================================================= */
+
+.legal-page {
+  font-family: var(--font-body);
+  color: var(--color-text);
+}
+
+.legal-wrap {
+  max-width: 68ch;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.legal-back {
+  display: inline-flex; align-items: center;
+  color: var(--color-accent);
+  text-decoration: none;
+  font-size: 14px; font-weight: 500;
+  min-height: 44px;
+  margin-bottom: 24px;
+}
+
+.legal-back:hover { color: var(--color-accent-700); }
+
+.legal-title {
+  font-family: var(--font-heading);
+  font-size: clamp(28px, 5vw, 40px);
+  color: var(--brand-ink);
+  margin: 0 0 8px;
+  line-height: 1.1;
+}
+
+.legal-updated {
+  font-size: 13px; color: var(--color-neutral-500);
+  margin: 0 0 28px;
+}
+
+.legal-intro { margin-bottom: 32px; }
+.legal-intro p {
+  font-size: 15px; line-height: 1.7;
+  color: var(--color-neutral-700); margin: 0 0 12px;
+}
+
+.legal-section { margin-bottom: 28px; }
+
+.legal-section h2 {
+  font-family: var(--font-heading);
+  font-size: 18px; font-weight: 600;
+  color: var(--brand-ink);
+  margin: 0 0 10px;
+  line-height: 1.3;
+  scroll-margin-top: 80px;
+}
+
+.legal-section p {
+  font-size: 14.5px; line-height: 1.7;
+  color: var(--color-neutral-700); margin: 0 0 8px;
+}
+
+.legal-section ul { margin: 0 0 8px; padding-left: 22px; }
+.legal-section li {
+  font-size: 14.5px; line-height: 1.7;
+  color: var(--color-neutral-700); margin-bottom: 4px;
+}
+
+.legal-back-bottom {
+  margin-top: 40px; padding-top: 20px;
+  border-top: 1px solid var(--color-divider);
+}
+
+/* FAQ */
+
+.faq-list { display: flex; flex-direction: column; }
+
+.faq-item {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.faq-item:last-child { border-bottom: 0; }
+
+.faq-question {
+  font-family: var(--font-heading);
+  font-size: 18px; font-weight: 600;
+  color: var(--brand-ink);
+  margin: 0 0 10px;
+  line-height: 1.3;
+}
+
+.faq-answer p {
+  font-size: 14.5px; line-height: 1.7;
+  color: var(--color-neutral-700); margin: 0 0 8px;
+}
+
+.faq-answer p:last-child { margin-bottom: 0; }
+.faq-answer ul { margin: 0 0 8px; padding-left: 22px; }
+.faq-answer li {
+  font-size: 14.5px; line-height: 1.7;
+  color: var(--color-neutral-700); margin-bottom: 4px;
+}
+
+/* =========================================================================
+   Footer — dark green rounded panel
+   Panel bg: var(--panel-ink) (luminance ≈ 0.0344)
+   Body text: var(--panel-on)  (contrast ≈ 10.2:1)
+   Col headings: var(--color-accent-300) (contrast ≈ 6.9:1)
+   Muted text: var(--color-accent-300)  (contrast ≈ 5.7:1)
+   All pairs exceed WCAG AA 4.5:1 for normal-size text.
+   ========================================================================= */
+
+/* The panel is an inset card floating on the page ground, so it needs air on
+   every side — without the top padding it butts straight into the trust strip
+   and stops reading as a separate surface. */
+.footer-outer {
+  padding: 44px 24px 40px;
+  font-family: var(--font-body);
+}
+
+.footer-panel {
+  background: var(--panel-ink);
+  border-radius: 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* soft radial highlight — top-right corner */
+.footer-panel::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 380px; height: 380px;
+  background: radial-gradient(circle, rgba(184, 147, 60, .28) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.footer-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 48px 24px 36px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Four columns on an even rhythm. The brand column takes a little more room
+   for the blurb; the other three are equal so the gutters read as one
+   repeating interval rather than three different ones. */
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 44px;
+  margin-bottom: 32px;
+}
+
+.footer-col { display: flex; flex-direction: column; }
+
+/* brand */
+/* The footer renders <BrandLockup tone="dark" />; the inverted treatment lives
+   on .brand-logo--dark. Only the row wrapper is footer-specific. */
+.footer-brand-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+
+.footer-blurb {
+  font-size: 13px; line-height: 1.6;
+  color: var(--color-accent-300);
+  margin: 0; max-width: 28ch;
+}
+
+/* column heading shared */
+.footer-col-head {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--color-accent-300);
+  margin: 0 0 14px;
+}
+
+/* talk to us */
+.footer-contact-list { display: flex; flex-direction: column; }
+
+.footer-contact-link {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--panel-on);
+  text-decoration: none;
+  font-size: 13.5px;
+  min-height: 36px; padding: 2px 0;
+}
+
+.footer-contact-link:hover { color: var(--color-accent-2-300); }
+
+/* prevents the long email address from breaking mid-character */
+.footer-contact-email { overflow-wrap: anywhere; }
+
+/* Sits apart from the three links above it — it is a fact, not a fourth way to
+   get in touch, and reads as a dead link if it hugs them. */
+.footer-hours {
+  font-size: 13px; color: var(--color-accent-300);
+  margin: 0; padding: 14px 0 2px;
+  line-height: 1.4;
+}
+
+/* shop nav */
+.footer-shop-links { display: flex; flex-direction: column; }
+
+.footer-shop-link {
+  color: var(--panel-on);
+  text-decoration: none;
+  font-size: 13.5px;
+  min-height: 36px; display: flex; align-items: center;
+  padding: 2px 0;
+}
+
+.footer-shop-link:hover { color: var(--color-accent-2-300); }
+
+/* social chips */
+.footer-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.footer-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 14px; min-height: 44px;
+  background: var(--panel-chip);
+  border: 1px solid var(--panel-chip-border);
+  border-radius: 999px;
+  color: var(--panel-on);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background .18s, border-color .18s, color .18s;
+}
+
+.footer-chip:hover {
+  background: rgba(251, 248, 241, .17);
+  border-color: rgba(233, 243, 236, .35);
+  color: var(--color-accent-2-300);
+}
+
+/* divider */
+.footer-divider {
+  border: 0; height: 1px;
+  background: var(--panel-rule);
+  margin: 0 0 24px;
+}
+
+/* bottom bar */
+.footer-bottom {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+
+.footer-bottom-left {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.footer-copy {
+  font-size: 12.5px; color: rgba(216, 237, 228, .65);
+  white-space: nowrap;
+}
+
+.footer-legal-link {
+  color: var(--panel-on);
+  text-decoration: none;
+  min-height: 44px; display: inline-flex; align-items: center;
+  font-size: 12.5px;
+}
+
+.footer-legal-link:hover { color: var(--color-accent-2-300); text-decoration: underline; }
+
+.footer-bottom-right { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Non-interactive trust marks, so no touch-target minimum applies — they are
+   sized to sit level with the copyright line rather than as buttons. Sentence
+   case: shouted small-caps read as a banner ad next to the legal links. */
+.footer-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 15px; min-height: 34px;
+  background: var(--panel-chip);
+  border: 1px solid var(--panel-rule);
+  border-radius: 999px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--color-accent-2-300);
+  white-space: nowrap;
+}
+
+/* Desktop rows are tightened to 36px for density (WCAG 2.2 target-size
+   minimum is 24px for a fine pointer). Touch devices get the full 44px back —
+   keyed off the pointer, not the viewport, so a small-window desktop stays
+   dense and a large tablet still gets big targets. */
+@media (pointer: coarse) {
+  .footer-contact-link, .footer-shop-link { min-height: 44px; }
+}
+
+/* footer responsive */
+@media (max-width: 900px) {
+  .footer-cols {
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Keep the top gap — the panel is an inset card and needs air above it on
+     mobile just as much as on desktop. Zeroing it here made the footer butt
+     straight into whatever section preceded it. */
+  .footer-outer { padding: 32px 14px 32px; }
+  .footer-panel { border-radius: 24px; }
+  .footer-inner { padding: 36px 20px 28px; }
+  .footer-cols { grid-template-columns: 1fr; gap: 28px; }
+  .footer-blurb { max-width: none; }
+  .footer-bottom { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-chip { transition: none; }
+}
+
+/* ==========================================================================
+   Homepage (/) — lifted from the Homepage design.
+   The shop lives under .shop-shell; the homepage sits directly on --color-bg.
+   ========================================================================== */
+
+.announce {
+  background: var(--color-accent-800);
+  color: var(--panel-on);
+  font-size: 12.5px;
+}
+.announce-inner {
+  max-width: 1200px; margin: 0 auto;
+  padding: 9px 20px;
+  display: flex; align-items: center; gap: 14px;
+}
+.announce-msg { flex: 1; text-align: center; font-weight: 500; }
+/* 27×26 before — tight even for a mouse, and the only control in the strip. */
+.announce-close {
+  background: none; border: 0; cursor: pointer;
+  color: var(--panel-on-muted);
+  font-size: 14px; line-height: 1;
+  font-family: inherit; flex: none;
+  display: grid; place-items: center;
+  width: 44px; height: 44px; padding: 0;
+  margin: -10px -8px -10px 0;
+}
+.announce-close:hover { color: var(--panel-on); }
+
+/* --- header ------------------------------------------------------------- */
+
+.site-header {
+  position: sticky; top: 0; z-index: 60;
+  background: color-mix(in srgb, var(--color-bg) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid transparent;
+  transition: background .22s, box-shadow .22s, border-color .22s;
+}
+.site-header--scrolled {
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  border-bottom-color: var(--color-divider);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.site-header-inner {
+  max-width: 1200px; margin: 0 auto;
+  padding: 0 20px;
+  display: flex; align-items: center; gap: 26px;
+  height: 76px;
+  transition: height .22s;
+}
+.site-header--scrolled .site-header-inner { height: 62px; }
+
+.site-header-brand {
+  display: flex; align-items: center; gap: 6px;
+  text-decoration: none; flex: none;
+}
+
+/* The nav is a single link, so it is shown at every width — no burger, no
+   mobile menu. Hiding one link behind a hamburger costs a tap and buys
+   nothing. If Benefits and Our Farm return, revisit this. */
+/* Vertically centred on the lockup by the row's align-items:center — no
+   offset. Tried baseline-aligning it to "Enerzeia" and then to "Future Farm";
+   the owner preferred plain centring, so leave it alone. Note that a margin
+   here would only shift it by half its value, because the centring gives back
+   the extra outer height. */
+.site-nav {
+  display: flex;
+  gap: 26px; font-size: 14.5px; font-weight: 500;
+}
+.site-nav a {
+  text-decoration: none; color: var(--color-neutral-700);
+  padding: 6px 0;
+  border-bottom: 2px solid transparent;
+}
+.site-nav a:hover {
+  color: var(--color-accent-700);
+  border-bottom-color: var(--color-accent-2);
+}
+
+/* Right-hand slot, rendered only when it has contents (the shop's account
+   control and cart). It owns the margin-left:auto that pushes it clear of the
+   nav. */
+.site-header-right {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 14px;
+  flex: none;
+}
+
+/* A second nav entry ("Our Farm") pushed the shop's header past its width on a
+   phone: brand + two links + account + cart came to ~410px of content in a
+   390px viewport, and the cart ended up flush against the screen edge with its
+   20px padding entirely eaten. Measured, not guessed — removing the second
+   link from the DOM moved the cart's right edge from 391px back to 355px.
+   Only the shop carries a right slot, so the homepage and /farm were fine.
+
+   Tightening the two gaps below 720px recovers ~40px and puts the header back
+   to about the width it had with one link, so a 375px phone fits again. The
+   gaps are what give, because they are the only slack here: the brand is
+   `flex: none` (and the lockup is not mine to shrink), and neither the account
+   control nor the cart can lose width without breaking the 44px touch floor.
+
+   This block must stay AFTER `.site-nav` above — a media query adds no
+   specificity, so declaring it earlier let the later `gap: 26px` win, which is
+   exactly what happened on the first attempt. */
+@media (max-width: 720px) {
+  .site-header-inner { gap: 12px; }
+  .site-nav { gap: 14px; }
+}
+
+/* A nav label must never wrap — a two-line link in a 76px bar is what the
+   burger below exists to prevent. */
+.site-nav a { white-space: nowrap; }
+
+/* --- the mobile menu ------------------------------------------------------
+
+   The burger returned when the nav went from one link to two. Below 560px the
+   shop's header cannot hold brand + two labels + account + cart on one line
+   (417px of content against 375px of screen), so the links move into a panel.
+   Above 560px the burger is hidden and the links sit in the bar as before. */
+
+.site-burger {
+  display: none;
+  margin-left: auto;
+  width: 44px; height: 44px; flex: none;
+  align-items: center; justify-content: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 12px; color: var(--brand-ink);
+  cursor: pointer; padding: 0;
+}
+.site-burger:hover { background: var(--color-neutral-100); }
+
+.site-menu {
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+.site-menu-list {
+  max-width: 1200px; margin: 0 auto;
+  padding: 6px 20px 10px;
+  display: flex; flex-direction: column;
+}
+.site-menu-link {
+  display: flex; align-items: center; min-height: 48px;
+  text-decoration: none; font-size: 16px; font-weight: 500;
+  color: var(--color-neutral-700);
+  border-bottom: 1px solid var(--color-divider);
+}
+.site-menu-list .site-menu-link:last-child { border-bottom: 0; }
+.site-menu-link:hover { color: var(--color-accent-700); }
+
+@media (max-width: 560px) {
+  .site-nav { display: none; }
+  .site-burger { display: inline-flex; }
+}
+
+/* On the shop the right slot already absorbs the free space with its own
+   `margin-left: auto`. Two auto margins would SPLIT that space and strand the
+   cart in the middle of the bar, so the burger drops its auto when it follows
+   the right slot — which is exactly the DOM order on the shop, and never the
+   case on the homepage or /farm. */
+.site-header-right + .site-burger { margin-left: 0; }
+
+/* --- hero --------------------------------------------------------------- */
+
+.home { background: var(--color-bg); }
+
+.home-hero-section {
+  max-width: 1200px; margin: 0 auto;
+  padding: clamp(28px, 5vw, 64px) 20px clamp(36px, 5vw, 72px);
+}
+/* Tops aligned, not centred. The two columns are different heights — the 4:5
+   art is taller than the copy — so `align-items: center` pushed the text down
+   by half the difference (79px at 1280px), leaving a void above the eyebrow
+   while the image started much higher. The text column also changes height as
+   the headline rewraps, so centring makes the offset move with the viewport.
+   Aligning the tops keeps the eyebrow and the image's top edge on one line at
+   every width. */
+.home-hero {
+  display: grid; grid-template-columns: 1fr;
+  gap: clamp(28px, 4vw, 52px); align-items: start;
+}
+
+.home-eyebrow-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--color-surface);
+  border-radius: 999px; padding: 7px 15px;
+  font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  color: var(--color-accent-2-700);
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 20px;
+}
+.home-eyebrow-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-accent-2);
+}
+
+.home-h1 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: clamp(36px, 6.6vw, 62px); line-height: 1.03;
+  letter-spacing: -.01em; margin: 0 0 18px;
+  color: var(--brand-ink); text-wrap: pretty;
+}
+.home-hero-body {
+  font-size: clamp(15.5px, 2vw, 18px); line-height: 1.6;
+  color: var(--color-neutral-700);
+  max-width: 46ch; margin: 0 0 26px; text-wrap: pretty;
+}
+
+.home-cta-row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 14px 22px; margin-bottom: 30px;
+}
+.home-cta {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--color-accent); color: var(--color-surface);
+  text-decoration: none; border-radius: 999px;
+  padding: 16px 28px; font-size: 15.5px; font-weight: 600;
+  min-height: 52px; box-shadow: var(--shadow-md);
+  transition: background .18s;
+}
+.home-cta:hover { background: var(--color-accent-600); color: var(--color-surface); }
+/* Underlined with text-decoration rather than border-bottom: the touch rule
+   gives this a 44px box, and a border would detach from the text and float at
+   the bottom of it. A decoration stays on the baseline at any box height. */
+.home-cta-quiet {
+  color: var(--color-accent-600); font-size: 14.5px; font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent-2);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+
+.home-chips { display: flex; flex-wrap: wrap; gap: 9px; }
+.home-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 999px; padding: 9px 16px;
+  font-size: 13px; font-weight: 600;
+  color: var(--brand-ink); text-decoration: none;
+  min-height: 40px; transition: border-color .18s, background .18s;
+}
+.home-chip:hover {
+  border-color: var(--color-accent-2);
+  background: var(--color-accent-2-100);
+  color: var(--brand-ink);
+}
+.home-chip-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-accent); flex: none;
+}
+
+.home-hero-art-wrap { position: relative; }
+/* Now a real photograph rather than a gradient panel, so it needs to clip the
+   image it contains; the gradient stays as the fallback painted underneath. */
+.home-hero-art {
+  position: relative; overflow: hidden;
+  aspect-ratio: 4/5; border-radius: 32px;
+  box-shadow: var(--shadow-lg);
+  filter: saturate(.92);
+}
+.home-hero-badge {
+  position: absolute; left: -14px; bottom: 26px;
+  background: var(--color-surface);
+  border-radius: 20px; padding: 14px 18px;
+  box-shadow: var(--shadow-md);
+  display: none;
+}
+.home-hero-badge-big {
+  font-family: var(--font-heading); font-size: 22px;
+  color: var(--color-accent); line-height: 1;
+}
+.home-hero-badge-label {
+  font-size: 11.5px; color: var(--color-neutral-700); margin-top: 3px;
+}
+
+/* --- sections ----------------------------------------------------------- */
+
+.home-section {
+  max-width: 1200px; margin: clamp(48px, 7vw, 88px) auto 0;
+  padding: 0 20px; scroll-margin-top: 90px;
+}
+.home-section--narrow { max-width: 900px; }
+
+.home-section-intro { max-width: 56ch; margin-bottom: 26px; }
+.home-eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--color-accent-2-700);
+  margin: 0 0 12px;
+}
+.home-h2 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: clamp(26px, 3.6vw, 38px); margin: 0 0 12px;
+  color: var(--brand-ink); line-height: 1.1;
+}
+.home-h3 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 20px; margin: 0; color: var(--brand-ink); line-height: 1.2;
+}
+.home-section-body {
+  font-size: 15.5px; line-height: 1.6;
+  color: var(--color-neutral-700); margin: 0;
+}
+
+/* --- moments ------------------------------------------------------------ */
+
+.home-moments {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: 18px;
+}
+.home-moment {
+  background: var(--color-surface); border-radius: 26px;
+  overflow: hidden; box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column;
+  transition: box-shadow .25s, transform .25s;
+}
+/* Square, not 4:3. These now hold real photographs and all three are portrait
+   sources; a 4:3 landscape frame cropped away the bottom of each one, which is
+   where the subject sits (the bowl of powder, the scoop). 1:1 keeps it and
+   still balances against the body text in a three-up row. */
+.home-moment-art {
+  position: relative; overflow: hidden;
+  aspect-ratio: 1/1; filter: saturate(.92);
+  transition: transform .3s ease;
+}
+.home-moment-body {
+  padding: 20px 20px 22px;
+  display: flex; flex-direction: column; gap: 11px; flex: 1;
+}
+.home-moment-when {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px; letter-spacing: .1em; color: var(--color-accent-2-700);
+}
+.home-moment-text {
+  font-size: 14.5px; line-height: 1.6;
+  color: var(--color-neutral-700); margin: 0;
+}
+.home-moment-form {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px solid var(--color-divider);
+  font-size: 13px; color: var(--color-neutral-600);
+}
+.home-moment-form span { font-weight: 600; color: var(--brand-ink); }
+
+/* --- tips / starting out ------------------------------------------------ */
+
+.home-two-up {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px; margin-top: 18px;
+}
+.home-tips {
+  background: var(--color-accent-2-100);
+  border-radius: 26px; padding: 24px;
+}
+.home-tip-list {
+  list-style: none; margin: 10px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.home-tip-list li {
+  display: flex; gap: 10px;
+  font-size: 14px; line-height: 1.55; color: var(--color-neutral-700);
+}
+.home-tip-list li::before {
+  content: '—'; color: var(--color-accent-2-700); flex: none;
+}
+.home-starting {
+  background: var(--color-surface); border-radius: 26px;
+  padding: 24px; box-shadow: var(--shadow-sm);
+}
+.home-starting-body {
+  font-size: 14.5px; line-height: 1.6;
+  color: var(--color-neutral-700); margin: 10px 0 14px;
+}
+.home-starting-caution {
+  font-size: 13px; line-height: 1.55;
+  color: var(--color-neutral-600); margin: 0;
+}
+
+/* --- proof -------------------------------------------------------------- */
+
+.home-proof {
+  position: relative; margin-top: 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 26px; padding: clamp(24px, 3.5vw, 34px);
+  overflow: hidden; scroll-margin-top: 90px;
+}
+.home-proof-watermark {
+  position: absolute; right: -10px; bottom: -26px;
+  font-family: var(--font-heading);
+  font-size: clamp(70px, 11vw, 140px); line-height: 1;
+  color: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  letter-spacing: -.02em; pointer-events: none; user-select: none;
+}
+.home-proof-head {
+  position: relative;
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 8px 16px; margin-bottom: 22px;
+}
+.home-proof-aside { font-size: 13px; color: var(--color-neutral-700); }
+
+/* auto-fit rather than a fixed count: the seal list grew from four to five when
+   heavy metals was added, and a hardcoded `repeat(4, 1fr)` left the fifth
+   stranded alone on a second row. */
+.home-seals {
+  position: relative;
+  display: grid; gap: 16px;
+  /* 125px, not 140: at 375px the panel is ~285px inside its padding, and two
+     140px tracks plus the 16px gap need 296px — so five seals collapsed into a
+     single very tall column. 125px fits two across on a phone and still spreads
+     to five in one row on a desktop. */
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+}
+.home-seal {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 11px;
+}
+.home-seal-ring {
+  width: 92px; height: 92px; border-radius: 50%; flex: none;
+  border: 1.5px solid color-mix(in srgb, var(--color-accent-2) 55%, transparent);
+  display: grid; place-items: center;
+  background: var(--color-surface);
+}
+.home-seal-inner {
+  width: 76px; height: 76px; border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 30%, transparent);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px; padding: 6px;
+}
+.home-seal-mark {
+  font-family: var(--font-heading); font-size: 15px;
+  line-height: 1; color: var(--color-accent);
+}
+.home-seal-sub {
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--color-accent-2-700);
+}
+.home-seal-title {
+  font-size: 13.5px; font-weight: 700;
+  color: var(--brand-ink); line-height: 1.25;
+}
+.home-seal-body {
+  font-size: 12px; color: var(--color-neutral-700);
+  margin-top: 4px; line-height: 1.45;
+}
+
+/* --- reviews ------------------------------------------------------------ */
+
+.home-reviews {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+.home-review {
+  background: var(--color-surface); border-radius: 26px;
+  padding: 24px; box-shadow: var(--shadow-sm);
+  margin: 0; display: flex; flex-direction: column; gap: 14px;
+  transition: box-shadow .25s, transform .25s;
+}
+
+/* Card zoom, matching the product cards. Hover-capable pointers only, so it
+   never sticks after a tap on a phone. */
+@media (hover: hover) {
+  .home-moment:hover,
+  .home-review:hover {
+    box-shadow: var(--shadow-md);
+    transform: scale(1.02);
+    position: relative;
+    z-index: 1;
+  }
+  /* The photo zooms further inside the card's clipped frame. */
+  .home-moment:hover .home-moment-art { transform: scale(1.06); }
+}
+.home-review-stars {
+  font-size: 13px; letter-spacing: 2px; color: var(--color-accent-2);
+}
+.home-review-quote {
+  font-family: var(--font-heading); font-size: 17.5px; line-height: 1.45;
+  color: var(--brand-ink); margin: 0;
+}
+.home-review-body {
+  font-size: 14px; line-height: 1.6;
+  color: var(--color-neutral-700); margin: 0;
+}
+.home-review-who {
+  font-size: 12.5px; color: var(--color-neutral-600); margin-top: auto;
+}
+
+/* --- faq ---------------------------------------------------------------- */
+
+.home-faq {
+  background: var(--color-surface); border-radius: 28px;
+  padding: 6px 22px; box-shadow: var(--shadow-sm);
+}
+.home-faq-item { border-bottom: 1px solid var(--color-divider); }
+.home-faq-item:last-of-type { border-bottom: 0; }
+.home-faq-q {
+  width: 100%; display: flex; align-items: center; gap: 14px;
+  background: none; border: 0; padding: 20px 2px;
+  cursor: pointer; text-align: left;
+  font-family: var(--font-body); min-height: 56px;
+  font-size: 16px; font-weight: 600; color: var(--brand-ink);
+}
+.home-faq-q > span:first-child { flex: 1; }
+.home-faq-icon {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 15px;
+  background: var(--color-neutral-100); color: var(--color-accent-600);
+  transition: transform .2s, background .2s, color .2s;
+}
+.home-faq-icon--open {
+  background: var(--color-accent); color: var(--color-surface);
+  transform: rotate(45deg);
+}
+.home-faq-a {
+  font-size: 14.5px; line-height: 1.65;
+  color: var(--color-neutral-700);
+  margin: 0 0 20px; max-width: 64ch; padding-right: 34px;
+}
+.home-faq-more { margin: 18px 2px 6px; font-size: 14px; }
+
+/* --- homepage responsive ------------------------------------------------ */
+
+@media (min-width: 560px) {
+  /* The base rule's auto-fit already handles the count; this override existed
+     to force four across and would now strand the fifth seal. */
+  .home-hero-badge { display: block; }
+}
+
+@media (min-width: 880px) {
+  .home-hero { grid-template-columns: 1.05fr .95fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header,
+  .site-header-inner,
+  .home-cta,
+  .home-chip,
+  .home-faq-icon { transition: none; }
+}
+
+/* ==========================================================================
+   Our Farm (/farm).
+
+   The photographs carry the argument on this page, so the process steps
+   alternate image and text rather than stacking words above a gallery. Most of
+   the type scale is borrowed from the homepage (.home-h1/h2/h3, .home-eyebrow,
+   .home-cta) so the two pages read as one site; only what is genuinely new to
+   this page is defined here.
+   ========================================================================== */
+
+.farm { padding-bottom: clamp(40px, 6vw, 72px); }
+
+/* --- photo frame --------------------------------------------------------- */
+
+/* The gradient is painted on the frame and the image sits over it, so a file
+   that is missing or fails to load leaves a composed block rather than a
+   broken-image glyph. FarmPhoto drops the <img> on error; see its comment. */
+.farm-photo {
+  position: relative; overflow: hidden;
+  border-radius: 26px; box-shadow: var(--shadow-md);
+  filter: saturate(.97);
+}
+.farm-photo--tall { aspect-ratio: 4/5; }
+.farm-photo--portrait { aspect-ratio: 4/5; }
+.farm-photo--landscape { aspect-ratio: 16/11; }
+.photo-img {
+  display: block; width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+/* --- hero ---------------------------------------------------------------- */
+
+.farm-hero-section {
+  max-width: 1200px; margin: 0 auto;
+  padding: clamp(28px, 5vw, 64px) 20px clamp(28px, 4vw, 48px);
+}
+/* Tops aligned rather than centred, for the same reason as the homepage hero:
+   the columns are different heights and centring drops the eyebrow. */
+.farm-hero {
+  display: grid; grid-template-columns: 1fr;
+  gap: clamp(28px, 4vw, 52px); align-items: start;
+}
+
+.farm-points {
+  display: grid; grid-template-columns: 1fr;
+  gap: 16px; margin-top: clamp(30px, 4vw, 46px);
+}
+.farm-point {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 22px; padding: 22px;
+}
+.farm-point-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 17px; margin: 0 0 8px; color: var(--brand-ink);
+}
+.farm-point-body {
+  font-size: 14.5px; line-height: 1.6;
+  color: var(--color-neutral-700); margin: 0;
+}
+
+/* --- process steps ------------------------------------------------------- */
+
+.farm-steps {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column;
+  gap: clamp(28px, 4.5vw, 56px);
+}
+.farm-step {
+  display: grid; grid-template-columns: 1fr;
+  gap: clamp(18px, 3vw, 40px); align-items: center;
+}
+.farm-step-num {
+  display: block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px; letter-spacing: .14em;
+  color: var(--color-accent-2-700); margin-bottom: 10px;
+}
+.farm-step-body {
+  font-size: 15px; line-height: 1.65;
+  color: var(--color-neutral-700);
+  margin: 10px 0 0; max-width: 54ch; text-wrap: pretty;
+}
+/* The process closes on the visit invitation. Centred and tinted so it reads as
+   a change of address — the steps describe, this one asks. */
+.farm-visit-panel {
+  margin-top: clamp(28px, 4.5vw, 56px);
+  background: var(--color-accent-100);
+  border-radius: 26px; padding: clamp(26px, 4vw, 44px);
+  text-align: center;
+}
+.farm-visit-panel .home-eyebrow { margin-bottom: 10px; }
+.farm-visit-body {
+  font-size: 15px; line-height: 1.65;
+  color: var(--color-neutral-700);
+  margin: 0 auto 24px; max-width: 56ch; text-wrap: pretty;
+}
+
+/* --- why the grade holds -------------------------------------------------- */
+
+/* Photo beside the claims rather than above them: the bowl is the evidence for
+   the four cards, so they should be readable together without scrolling. */
+.farm-grade-wrap {
+  display: grid; grid-template-columns: 1fr;
+  gap: clamp(20px, 3vw, 36px); align-items: center;
+}
+.farm-grade {
+  display: grid; grid-template-columns: 1fr; gap: 16px;
+}
+.farm-grade-card {
+  background: var(--color-surface); border-radius: 22px;
+  padding: 24px; box-shadow: var(--shadow-sm);
+  border-top: 3px solid var(--color-accent-2);
+}
+.farm-grade-body {
+  font-size: 14.5px; line-height: 1.6;
+  color: var(--color-neutral-700); margin: 10px 0 0;
+}
+
+/* --- the byte ------------------------------------------------------------ */
+
+/* A deep panel, like the footer's, so the quotation reads as a change of voice
+   rather than as one more card. Cream on --brand-ink measures well past 4.5:1;
+   the gold accent is NOT used for text here — see the palette note at the top
+   of this file. */
+.farm-byte {
+  margin: 0; display: grid; grid-template-columns: 1fr;
+  gap: clamp(20px, 3vw, 38px); align-items: center;
+  background: var(--brand-ink);
+  border-radius: 30px; padding: clamp(22px, 3.5vw, 40px);
+  overflow: hidden;
+}
+.farm-byte-photo { box-shadow: var(--shadow-lg); }
+.farm-byte-text { position: relative; }
+.farm-byte-mark {
+  display: block;
+  font-family: var(--font-heading); font-size: 64px; line-height: .6;
+  color: color-mix(in srgb, var(--color-accent-2) 60%, transparent);
+  margin-bottom: 10px; user-select: none;
+}
+.farm-byte-quote {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: clamp(19px, 2.6vw, 27px); line-height: 1.35;
+  color: var(--color-surface); margin: 0; text-wrap: pretty;
+}
+/* A single line — "Founder", with no name and no company beneath it. */
+.farm-byte-who {
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--color-surface) 22%, transparent);
+}
+.farm-byte-name {
+  font-size: 15px; font-weight: 600; color: var(--color-surface);
+}
+
+/* --- closing ------------------------------------------------------------- */
+
+.farm-closing {
+  background: var(--color-accent-100);
+  border-radius: 30px; padding: clamp(24px, 3.5vw, 40px);
+  display: grid; grid-template-columns: 1fr;
+  gap: clamp(20px, 3vw, 40px); align-items: center;
+}
+.farm-closing .home-section-body { margin: 0 0 24px; max-width: 46ch; }
+
+/* --- farm responsive ----------------------------------------------------- */
+
+@media (min-width: 640px) {
+  .farm-points { grid-template-columns: repeat(3, 1fr); }
+  .farm-grade { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 980px) {
+  /* Only split the grade section once the cards still have room to breathe
+     two-up beside the photo; below this they stack under it. */
+  .farm-grade-wrap { grid-template-columns: .62fr 1.38fr; }
+}
+
+@media (min-width: 880px) {
+  .farm-hero { grid-template-columns: 1.05fr .95fr; }
+
+  .farm-step { grid-template-columns: 1fr 1fr; }
+  /* Alternate the sides. `order` rather than `direction`, which would also
+     flip the text's own alignment. Every step has a photograph, so there is no
+     odd-one-out case to handle here. */
+  .farm-step:nth-child(even) .farm-step-text { order: 2; }
+
+  .farm-byte { grid-template-columns: .8fr 1.2fr; }
+  .farm-closing { grid-template-columns: .75fr 1.25fr; }
+}
+
+/* ==========================================================================
+   Touch targets.
+
+   Audited at 375px across /, /shop, a PDP and /terms: fourteen controls came
+   in under 44px, including the shop's category filters (29px tall), the PDP
+   quantity stepper (34×34) and every "Back to shop" link (17–36px).
+
+   Keyed off `pointer: coarse`, not viewport width, so a phone gets full-size
+   targets while a desktop keeps its density — and a large touch tablet is
+   covered too, which a max-width query would miss. WCAG 2.2's floor for a
+   fine pointer is 24px, which these already clear; 44px is the touch figure.
+   ========================================================================== */
+
+@media (pointer: coarse) {
+  /* Header */
+  .site-header-brand { min-height: 44px; }
+  /* The nav link is now shown at every width rather than hidden behind a
+     burger, so it needs a real hit box on touch. */
+  .site-nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .btn-account { width: 44px; height: 44px; }
+  .btn-cart { min-height: 44px; }
+
+  /* Homepage hero trust chips — they link into #proof, so they are navigation */
+  .home-chip { min-height: 44px; }
+
+  /* Shop — category filters and variant pills */
+  .pill,
+  .pill-big { min-height: 44px; }
+
+  /* PDP — the quantity stepper is the most-tapped control on the screen */
+  .qty .btn-icon { width: 44px; height: 44px; font-size: 20px; }
+
+  /* Text links that act as navigation: give them a real hit box without
+     changing how they read. */
+  .btn-ghost,
+  .legal-back,
+  /* These two are wrapping <p>s; the link inside is the target */
+  .legal-back-bottom a,
+  .contact-back a,
+  .contact-order-link,
+  .home-cta-quiet,
+  .home-faq-more a,
+  .footer-legal-link {
+    display: inline-flex; align-items: center;
+    min-height: 44px;
+  }
 }

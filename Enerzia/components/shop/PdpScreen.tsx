@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 import type { ShopActions } from '@/app/shop/useShop';
 import { findProduct, rupeeFromPaise } from '@/lib/shop/pricing';
 import type { ShopAction } from '@/lib/shop/reducer';
@@ -28,6 +30,15 @@ export function PdpScreen({
   const p = findProduct(state.pdp, state.products);
   const cartPending = state.pending.cart;
 
+  // Must be declared before any early return (hooks rules).
+  const [selectedThumb, setSelectedThumb] = useState(0);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
+  // Reset to the first image whenever the shopper navigates to a different PDP.
+  useEffect(() => {
+    setSelectedThumb(0);
+    setFailedUrls(new Set());
+  }, [p?.id]);
+
   // Products not yet loaded from the server — show a skeleton.
   if (!p) {
     return (
@@ -47,6 +58,9 @@ export function PdpScreen({
 
   const detail = state.pdpDetail;
   const siblings = state.products.filter((s) => s.family === p.family);
+  const firstImage = p.images[0]; // ImageDTO | undefined; undefined when images: []
+  // Hero image: prefer selected thumb, fall back to first, fall back to gradient.
+  const heroImage = firstImage ? (p.images[selectedThumb] ?? firstImage) : undefined;
   // Signed in: reflect server cart; signed out: reflect the offline buffer.
   const inCart = state.user ? state.cart?.lines.find((l) => l.productId === p.id) : undefined;
   const inBuffer = !state.user ? state.cartBuffer.find((i) => i.productId === p.id) : undefined;
@@ -65,12 +79,43 @@ export function PdpScreen({
 
       <div className="pdp-grid">
         <div>
-          <div className="pdp-art" style={{ background: p.grad }} />
-          <div className="pdp-thumbs" aria-hidden="true">
-            {THUMBS.map((g) => (
-              <div key={g} style={{ background: g }} />
-            ))}
+          <div
+            className="pdp-art"
+            style={heroImage && !failedUrls.has(heroImage.url) ? undefined : { background: p.grad }}
+          >
+            {heroImage && !failedUrls.has(heroImage.url) && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className="pdp-art-img"
+                src={heroImage.url}
+                alt={heroImage.alt || p.name}
+                onError={() => setFailedUrls((prev) => new Set([...prev, heroImage.url]))}
+              />
+            )}
           </div>
+
+          {p.images.length >= 1 ? (
+            <div className="pdp-thumbs">
+              {p.images.map((img, i) => (
+                <button
+                  key={img.publicId}
+                  type="button"
+                  className={`pdp-thumb-btn${i === selectedThumb ? ' pdp-thumb-btn--active' : ''}`}
+                  onClick={() => setSelectedThumb(i)}
+                  aria-label={img.alt || `${p.name} photo ${i + 1}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className="pdp-thumb-img" src={img.url} alt="" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="pdp-thumbs" aria-hidden="true">
+              {THUMBS.map((g) => (
+                <div key={g} style={{ background: g }} />
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
