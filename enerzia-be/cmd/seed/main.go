@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -36,6 +37,21 @@ func run(logger *slog.Logger) error {
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
+	}
+
+	// The live catalogue belongs to the catalogue manager, who decides what the
+	// shop sells through the admin console. This command is a development
+	// bootstrap for an empty database — it has no business deciding that in
+	// production, in either direction: creating a product puts something on sale
+	// that nobody chose to sell, and --overwrite would revert prices and copy.
+	//
+	// Refused outright rather than gated behind another flag. An escape hatch
+	// here just recreates the hazard at one remove; if this is ever genuinely
+	// needed against production it should cost a deliberate code change.
+	if cfg.AppEnv == config.EnvProduction {
+		return fmt.Errorf(
+			"refusing to seed a production database: the catalogue is maintained " +
+				"through the admin console, add or edit products there")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -106,6 +106,47 @@ before editing; never commit their files with yours.
 
 ---
 
+## The live catalogue is not yours to change
+
+The site is live and there is now a **catalogue manager** — a person, not an
+agent — who decides what the shop sells. Prices, product copy, stock, images
+and which products are active are theirs, set through the admin console.
+
+**Do not write product data.** Not through the seed, not through a one-off
+script, not through Atlas directly. This holds even when the catalogue looks
+wrong to you:
+
+- A product missing from the shop is far more likely to have been **retired on
+  purpose** than lost. It is not yours to restore.
+- A price that looks like a typo (`tablets-120` at ₹798.90) is a pricing
+  decision until the catalogue manager says otherwise.
+
+Report what you notice, and let them decide. Restoring a "missing" product
+silently overrides a human decision, and the shop starts selling something
+nobody chose to sell.
+
+### What this means in code
+
+`internal/catalogue` has five writers to the products collection. Only one was
+ever a hazard:
+
+| writer | caller | verdict |
+|---|---|---|
+| `TakeStock` / `ReturnStock` | order placement | fine — inventory moving on a real sale, never touches price or active |
+| `Create` / `Update` / `Retire` | admin console | fine — this *is* the catalogue manager's tool |
+| `Seed` / `SeedOverwrite` | `cmd/seed` | the hazard |
+
+So `cmd/seed` **refuses to run when `APP_ENV=production`**, and `Seed` is
+insert-only everywhere else. It is a development bootstrap for an empty
+database, nothing more. `SeedOverwrite` (`seed --overwrite`) still resets
+products to code values, which is why it must never reach production either —
+the refusal covers both.
+
+If you find yourself wanting to seed production, the answer is the admin
+console.
+
+---
+
 ## What to do next
 
 ### 1. Commit and push
