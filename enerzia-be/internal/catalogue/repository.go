@@ -209,7 +209,35 @@ func (r *Repository) ReturnStock(ctx context.Context, id ID, qty int) error {
 // Seed upserts the supplied catalogue. It is idempotent: prices and copy are
 // refreshed, but **stock is only set on insert** so a re-seed cannot reset a
 // live inventory count.
+// Seed creates any product that does not yet exist and LEAVES EXISTING
+// PRODUCTS UNTOUCHED.
+//
+// The catalogue is maintained through the admin console: prices, copy, badges
+// and the active flag are an administrator's to set. A seed that wrote over
+// them would silently revert that work — re-pricing a product back to its
+// original value, or un-retiring something deliberately withdrawn — and the
+// only symptom would be a shop that quietly disagrees with the console.
+//
+// So this is a bootstrap, not a sync. Use SeedOverwrite when you genuinely
+// intend to reset products to the values in code.
+//
+// Trust tiles are still replaced: nothing else can edit them, so the seed is
+// the only way they can ever change.
 func (r *Repository) Seed(ctx context.Context, products []Product, tiles []TrustTile) error {
+	return r.seed(ctx, products, tiles, false)
+}
+
+// SeedOverwrite resets every editable field of existing products to the values
+// in code, discarding administrator edits.
+//
+// Stock and images survive even here: stock is a live count that the seed has
+// no business rewinding, and images were uploaded through the console and
+// exist nowhere in code.
+func (r *Repository) SeedOverwrite(ctx context.Context, products []Product, tiles []TrustTile) error {
+	return r.seed(ctx, products, tiles, true)
+}
+
+func (r *Repository) seed(ctx context.Context, products []Product, tiles []TrustTile, overwrite bool) error {
 	for _, p := range products {
 		if err := p.Validate(); err != nil {
 			return fmt.Errorf("catalogue: seed: %w", err)
@@ -217,29 +245,42 @@ func (r *Repository) Seed(ctx context.Context, products []Product, tiles []Trust
 	}
 
 	for _, p := range products {
-		update := bson.D{
-			{Key: opSet, Value: bson.D{
-				{Key: fieldFamily, Value: string(p.Family)},
-				{Key: fieldForm, Value: string(p.Form)},
-				{Key: "name", Value: p.Name},
-				{Key: "stat", Value: p.Stat},
-				{Key: "stat2", Value: p.Stat2},
-				{Key: "blurb", Value: p.Blurb},
-				{Key: "grad", Value: p.Grad},
-				{Key: fieldPosition, Value: p.Position},
-				{Key: "mrp", Value: p.MRP},
-				{Key: "price", Value: p.Price},
-				{Key: fieldActive, Value: p.Active},
-				{Key: "rating", Value: p.Rating},
-				{Key: "badges", Value: p.Badges},
-				{Key: "nutrition", Value: p.Nutrition},
-			}},
-			{Key: "$setOnInsert", Value: bson.D{
-				{Key: fieldStock, Value: p.Stock},
-				// images is set only on insert so re-seeding never overwrites
-				// photographs an administrator uploaded via the console.
-				{Key: fieldImages, Value: []Image{}},
-			}},
+		// Every editable field. Which operator these go under is the whole
+		// difference between the two entry points above.
+		fields := bson.D{
+			{Key: fieldFamily, Value: string(p.Family)},
+			{Key: fieldForm, Value: string(p.Form)},
+			{Key: "name", Value: p.Name},
+			{Key: "stat", Value: p.Stat},
+			{Key: "stat2", Value: p.Stat2},
+			{Key: "blurb", Value: p.Blurb},
+			{Key: "grad", Value: p.Grad},
+			{Key: fieldPosition, Value: p.Position},
+			{Key: "mrp", Value: p.MRP},
+			{Key: "price", Value: p.Price},
+			{Key: fieldActive, Value: p.Active},
+			{Key: "rating", Value: p.Rating},
+			{Key: "badges", Value: p.Badges},
+			{Key: "nutrition", Value: p.Nutrition},
+		}
+
+		// Never overwritten by either path: stock is a live count, and images
+		// were uploaded through the console and exist nowhere in code.
+		onInsert := bson.D{
+			{Key: fieldStock, Value: p.Stock},
+			{Key: fieldImages, Value: []Image{}},
+		}
+
+		var update bson.D
+		if overwrite {
+			update = bson.D{
+				{Key: opSet, Value: fields},
+				{Key: "$setOnInsert", Value: onInsert},
+			}
+		} else {
+			// Everything under $setOnInsert: a product that already exists is
+			// not modified at all.
+			update = bson.D{{Key: "$setOnInsert", Value: append(fields, onInsert...)}}
 		}
 
 		if _, err := r.products.UpdateOne(ctx,

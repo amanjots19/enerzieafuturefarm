@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -29,6 +30,9 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	overwrite := flag.Bool("overwrite", false,
+		"reset existing products to code values, discarding admin edits (stock and images are kept)")
+	flag.Parse()
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
@@ -55,12 +59,23 @@ func run(logger *slog.Logger) error {
 
 	products := catalogue.SeedProducts()
 	tiles := catalogue.SeedTrustTiles()
-	if err := repo.Seed(ctx, products, tiles); err != nil {
+
+	// Default is insert-only: existing products are the administrator's, edited
+	// through the console, and a routine re-seed must not revert their prices,
+	// copy or retired flags. --overwrite is the deliberate escape hatch that
+	// resets them to the values in code (stock and images always survive).
+	if *overwrite {
+		logger.Warn("catalogue seed: OVERWRITE — resetting existing products to code values")
+		if err := repo.SeedOverwrite(ctx, products, tiles); err != nil {
+			return err
+		}
+	} else if err := repo.Seed(ctx, products, tiles); err != nil {
 		return err
 	}
 
 	logger.Info("catalogue seeded",
 		slog.String("database", cfg.MongoDB),
+		slog.Bool("overwrite", *overwrite),
 		slog.Int("products", len(products)),
 		slog.Int("trustTiles", len(tiles)),
 	)

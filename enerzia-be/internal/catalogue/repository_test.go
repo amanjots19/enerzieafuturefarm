@@ -469,6 +469,23 @@ func TestReturnStockWrapsErrors(t *testing.T) {
 
 /* ------------------------------------------------------------------ Seed */
 
+// productUpdate returns the single product upsert from a seed run, skipping the
+// trust-tile write.
+func productUpdate(t *testing.T, fake *mongotest.Server) bson.Raw {
+	t.Helper()
+	for _, r := range fake.Requests() {
+		if r.Command != "update" {
+			continue
+		}
+		u := r.Sequence("updates")[0]
+		if u.Lookup("q").Document().Lookup("_id").StringValue() != "trust" {
+			return u
+		}
+	}
+	t.Fatal("no product update command was sent")
+	return nil
+}
+
 func TestSeedUpsertsEveryProductAndTheTrustTiles(t *testing.T) {
 	repo, fake := newRepo(t)
 
@@ -488,87 +505,83 @@ func TestSeedUpsertsEveryProductAndTheTrustTiles(t *testing.T) {
 	}
 }
 
-func TestSeedPreservesStockOnReSeed(t *testing.T) {
-	// A re-seed must refresh prices without resetting a live inventory count.
+func TestSeedIsInsertOnlyByDefault(t *testing.T) {
+	// The catalogue is maintained through the admin console. A routine re-seed
+	// must NOT touch an existing product — no price, copy or active flag under
+	// $set — or it would silently revert an administrator's edits. Everything
+	// belongs under $setOnInsert, which affects only a brand-new document.
 	repo, fake := newRepo(t)
 
 	if err := repo.Seed(t.Context(), catalogue.SeedProducts()[:1], nil); err != nil {
 		t.Fatalf("Seed() error = %v", err)
 	}
 
-	// The trust singleton is written last, so pick the product write.
-	var entry bson.Raw
-	for _, r := range fake.Requests() {
-		if r.Command != "update" {
-			continue
-		}
-		q := r.Sequence("updates")[0].Lookup("q").Document()
-		if q.Lookup("_id").StringValue() != "trust" {
-			entry = r.Sequence("updates")[0]
-			break
-		}
-	}
-	if entry == nil {
-		t.Fatal("no product update command was sent")
-	}
+	entry := productUpdate(t, fake)
 
 	if upsert, err := entry.LookupErr("upsert"); err != nil || !upsert.Boolean() {
-		t.Error("seed writes must be upserts, or a second run fails on existing ids")
+		t.Error("seed writes must be upserts, so a missing product is still created")
 	}
-	set := entry.Lookup("u").Document().Lookup("$set").Document()
-	if _, err := set.LookupErr("price"); err != nil {
-		t.Error("a re-seed must refresh price")
+	// Nothing under $set at all.
+	if _, err := entry.Lookup("u").Document().LookupErr("$set"); err == nil {
+		t.Error("default Seed wrote a $set — a re-seed would overwrite an admin's edits")
 	}
-	if _, err := set.LookupErr("stock"); err == nil {
-		t.Error("stock must NOT be under $set; a re-seed would reset inventory")
-	}
-	onInsert, err := entry.Lookup("u").Document().LookupErr("$setOnInsert")
-	if err != nil {
-		t.Fatal("stock is not under $setOnInsert")
-	}
-	if _, err := onInsert.Document().LookupErr("stock"); err != nil {
-		t.Error("$setOnInsert does not carry stock")
+	// Every editable field, plus stock and images, under $setOnInsert.
+	onInsert := entry.Lookup("u").Document().Lookup("$setOnInsert").Document()
+	for _, k := range []string{"price", "mrp", "name", "active", "stock", "images"} {
+		if _, err := onInsert.LookupErr(k); err != nil {
+			t.Errorf("$setOnInsert is missing %q", k)
+		}
 	}
 }
 
-func TestSeedDoesNotWriteImagesToSet(t *testing.T) {
-	// images must NOT be in $set (a re-seed would wipe uploaded photographs)
-	// and MUST be in $setOnInsert (so a freshly seeded product has the field).
+func TestSeedOverwriteResetsEditableFieldsButKeepsStockAndImages(t *testing.T) {
+	// The deliberate escape hatch: reset products to code values. Editable
+	// fields move to $set, but stock (a live count) and images (uploaded
+	// through the console, absent from code) still survive under $setOnInsert.
+	repo, fake := newRepo(t)
+
+	if err := repo.SeedOverwrite(t.Context(), catalogue.SeedProducts()[:1], nil); err != nil {
+		t.Fatalf("SeedOverwrite() error = %v", err)
+	}
+
+	entry := productUpdate(t, fake)
+
+	set := entry.Lookup("u").Document().Lookup("$set").Document()
+	if _, err := set.LookupErr("price"); err != nil {
+		t.Error("SeedOverwrite must reset price under $set")
+	}
+	if _, err := set.LookupErr("stock"); err == nil {
+		t.Error("stock must NOT be under $set even on overwrite — it is a live count")
+	}
+	if _, err := set.LookupErr("images"); err == nil {
+		t.Error("images must NOT be under $set even on overwrite — they are not in code")
+	}
+	onInsert := entry.Lookup("u").Document().Lookup("$setOnInsert").Document()
+	for _, k := range []string{"stock", "images"} {
+		if _, err := onInsert.LookupErr(k); err != nil {
+			t.Errorf("$setOnInsert is missing %q", k)
+		}
+	}
+}
+
+func TestSeedNeverWritesImagesToSet(t *testing.T) {
+	// images are uploaded through the console and exist nowhere in code, so
+	// neither seed path may place them under $set. Under the default Seed there
+	// is no $set at all; this guards the property directly.
 	repo, fake := newRepo(t)
 
 	if err := repo.Seed(t.Context(), catalogue.SeedProducts()[:1], nil); err != nil {
 		t.Fatalf("Seed() error = %v", err)
 	}
 
-	// Find the product update (not the trust tile update).
-	var productUpdate bson.Raw
-	for _, r := range fake.Requests() {
-		if r.Command != "update" {
-			continue
-		}
-		q := r.Sequence("updates")[0].Lookup("q").Document()
-		if q.Lookup("_id").StringValue() != "trust" {
-			productUpdate = r.Sequence("updates")[0]
-			break
+	entry := productUpdate(t, fake)
+	if setVal, err := entry.Lookup("u").Document().LookupErr("$set"); err == nil {
+		if _, err := setVal.Document().LookupErr("images"); err == nil {
+			t.Error("images appeared under $set — a re-seed would wipe uploaded photographs")
 		}
 	}
-	if productUpdate == nil {
-		t.Fatal("no product update command was sent")
-	}
-
-	// images must not be under $set — that would wipe photographs on re-seed.
-	set := productUpdate.Lookup("u").Document().Lookup("$set").Document()
-	if _, err := set.LookupErr("images"); err == nil {
-		t.Error("images must NOT appear in $set — a re-seed would wipe uploaded photographs")
-	}
-
-	// images must be under $setOnInsert — a freshly inserted product needs the
-	// field present, not absent, so clients never encounter a missing key.
-	onInsert, err := productUpdate.Lookup("u").Document().LookupErr("$setOnInsert")
-	if err != nil {
-		t.Fatal("$setOnInsert is missing from the product update")
-	}
-	if _, err := onInsert.Document().LookupErr("images"); err != nil {
+	onInsert := entry.Lookup("u").Document().Lookup("$setOnInsert").Document()
+	if _, err := onInsert.LookupErr("images"); err != nil {
 		t.Error("images must appear in $setOnInsert so a freshly seeded product has the field")
 	}
 }
