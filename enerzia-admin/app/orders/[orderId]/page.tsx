@@ -12,7 +12,17 @@ import type { AdminOrder } from '@/lib/api/types';
 
 /** Divides paise by 100 and formats as ₹1,23,456 (en-IN). */
 function fmtRupees(paise: number): string {
-  return '₹' + (paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  // maximumFractionDigits: 0 alone ROUNDS: an order of ₹1,247.90 displayed as
+  // ₹1,248, which is simply a wrong number in an order book. Show paise when
+  // present, omit them when zero.
+  const hasPaise = paise % 100 !== 0;
+  return (
+    '₹' +
+    (paise / 100).toLocaleString('en-IN', {
+      minimumFractionDigits: hasPaise ? 2 : 0,
+      maximumFractionDigits: hasPaise ? 2 : 0,
+    })
+  );
 }
 
 function fmtDate(iso: string): string {

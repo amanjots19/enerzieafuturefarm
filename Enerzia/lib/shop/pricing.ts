@@ -17,8 +17,19 @@ export const rupee = (n: number): string => '₹' + n.toLocaleString('en-IN');
  * `₹X.XX` with exactly two decimal places. Never use Math.round — it would
  * render a wrong number confidently.
  */
-export const rupeeFromPaise = (paise: number): string =>
-  paise % 100 === 0 ? rupee(paise / 100) : '₹' + (paise / 100).toFixed(2);
+export const rupeeFromPaise = (paise: number): string => {
+  // Both branches go through toLocaleString so grouping is applied either way.
+  // toFixed(2) does not group, so ₹1,548 sat next to ₹1247.90 in the same
+  // summary — the same number formatted two different ways.
+  const hasPaise = paise % 100 !== 0;
+  return (
+    '₹' +
+    (paise / 100).toLocaleString('en-IN', {
+      minimumFractionDigits: hasPaise ? 2 : 0,
+      maximumFractionDigits: hasPaise ? 2 : 0,
+    })
+  );
+};
 
 /** Looks up a product by id in the loaded list. Returns undefined if not found. */
 export const findProduct = (

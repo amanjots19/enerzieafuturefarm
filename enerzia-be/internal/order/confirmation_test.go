@@ -111,6 +111,14 @@ func TestConfirmationFormatsRupeesIndianStyle(t *testing.T) {
 	}{
 		{0, "₹0"},
 		{20000, "₹200"},
+		// Paise are real: tablets-120 is priced at 79890. An earlier version did
+		// integer division and told a customer who paid ₹1,247.90 that they had
+		// paid ₹1,247.
+		{79890, "₹798.90"},
+		{124790, "₹1,247.90"},
+		{30010, "₹300.10"},
+		{5, "₹0.05"},
+		{12345678, "₹1,23,456.78"},
 		{105000, "₹1,050"},
 		{4999900, "₹49,999"},
 		{12345600, "₹1,23,456"},

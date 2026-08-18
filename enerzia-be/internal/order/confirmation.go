@@ -40,18 +40,25 @@ type confirmationData struct {
 	Phone        string
 }
 
-// rupees renders paise as ₹1,05,000 → "₹1,050" with Indian digit grouping.
+// rupees renders paise with Indian digit grouping: 105000 → "₹1,050",
+// 124790 → "₹1,247.90".
 //
 // Written out rather than pulled from a library because Indian grouping is not
 // every-three-digits: it is the last three, then twos. A naive formatter turns
 // ₹12,34,567 into ₹1,234,567, which reads as a different number to the person
 // it is being shown to.
+//
+// Paise are shown when present and omitted when zero. An earlier version did
+// integer division and dropped them, so an order of ₹1,247.90 told the customer
+// they had paid ₹1,247. Prices are not always whole rupees — tablets-120 is
+// ₹798.90 — so this is a real case, not a hypothetical.
 func rupees(paise int64) string {
 	neg := paise < 0
 	if neg {
 		paise = -paise
 	}
 	whole := paise / 100
+	frac := paise % 100
 
 	digits := fmt.Sprintf("%d", whole)
 	var out string
@@ -69,6 +76,10 @@ func rupees(paise int64) string {
 			groups = append([]string{rest}, groups...)
 		}
 		out = strings.Join(groups, ",") + "," + last3
+	}
+
+	if frac != 0 {
+		out += fmt.Sprintf(".%02d", frac)
 	}
 
 	sign := ""
