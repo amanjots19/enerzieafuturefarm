@@ -17,7 +17,7 @@
  *
  * Carried over from existing copy rather than invented here:
  *   - "sun-dried at low heat", "lab-tested batch by batch"  → lib/content/home.ts HERO
- *   - FSSAI licensed · NABL third-party lab · microbiology · microcystin
+ *   - FSSAI licensed · NABL third-party lab · microbiology · heavy metals
  *                                                            → home.ts SEALS
  *   - "No binders, no fillers"                → the tablets product copy (Mongo)
  *   - 62%+ plant protein by weight                          → home.ts HERO badge
@@ -84,7 +84,7 @@ export interface ProcessStep {
 export const PROCESS_INTRO = {
   eyebrow: 'How it is made',
   heading: 'From pond water to a sealed pack.',
-  body: 'Spirulina is a crop, and it is grown like one - slowly, in the open air, watched every day. This is the whole route, in the order it happens.',
+  body: 'Spirulina is a crop, and it is grown like one - slowly, watched every day. This is the whole route, in the order it happens.',
 };
 
 export const PROCESS: ProcessStep[] = [
@@ -190,7 +190,7 @@ export const GRADE_POINTS = [
   },
   {
     title: 'Our own licence, our own unit',
-    body: 'The manufacturing unit is FSSAI licensed and it is ours - the licence on the pack belongs to the people who grew what is inside it, not to a contract packer.',
+    body: 'Our spirulina is cultivated and processed under our FSSAI-licensed operations, with cultivation and raw-material processing carried out by us. From farm to finished product, we maintain strict quality standards, traceability, and care at every stage.',
   },
   {
     title: 'One ingredient',
@@ -201,21 +201,24 @@ export const GRADE_POINTS = [
 /**
  * The byte.
  *
- * **Attribution: "Founder", and nothing else — the owner's decision, 2026-08-16.**
- * No personal name and no company line beneath it. Do not "complete" this later
- * by adding a name; it is deliberately anonymous.
+ * **Attribution: "Vishal", above the role line "Founder" — the owner's
+ * instruction, 2026-08-23.** This REVERSES the 2026-08-16 decision to run the
+ * quote anonymously under "Founder" alone; the name is now published on the
+ * owner's own say-so. Do not strip it back out without asking them.
  *
  * The quotation is a quotation printed beside a photograph of a real,
- * identifiable person, so the standing rule from `Testimonial` in ./types.ts
- * applies here too: do not present written copy as somebody's testimony. These
- * words were drafted here rather than transcribed from anything that was said
- * out loud. The owner has reviewed the page with them in place; replace them
- * with their own words whenever they would rather, but nobody else should put
- * new words into this person's mouth.
+ * identifiable person — and now under that person's name, which raises the bar
+ * rather than lowering it. The standing rule from `Testimonial` in ./types.ts
+ * applies: do not present written copy as somebody's testimony. These words
+ * were drafted here rather than transcribed from anything that was said out
+ * loud. The owner has reviewed the page with them in place; replace them with
+ * their own words whenever they would rather, but nobody else should put new
+ * words into this person's mouth.
  */
 export const BYTE = {
-  /** Attribution line. "Founder" alone, by the owner's decision — see above. */
-  name: 'Founder',
+  /** Attribution line: the name, with `role` set beneath it. */
+  name: 'Vishal',
+  role: 'Founder',
   quote:
     'I wanted to be able to answer the one question nobody selling spirulina can answer: where did this actually come from? So we grew it ourselves. I can walk you to the pond it came out of.',
   photo: {

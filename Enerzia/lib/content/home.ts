@@ -62,7 +62,7 @@ export const HERO = {
   /** Rendered as three lines; the breaks are intentional typesetting. */
   headingLines: ['Spirulina you can', 'trace back to', 'the water it grew in.'],
   body: "Harvested on our farm, sun-dried at low heat and lab-tested batch by batch - powder for your morning smoothie, tablets for the days you're moving.",
-  ctaLabel: 'Shop spirulina - from ₹200',
+  ctaLabel: 'Shop spirulina - from ₹400',
   /** Floating stat over the hero image. */
   badgeBig: '62%+',
   badgeLabel: 'plant protein by weight',
@@ -230,11 +230,18 @@ export const SEALS: Seal[] = [
     title: 'Heavy metals',
     body: 'Lead, arsenic, cadmium and mercury, against the permitted limits.',
   },
+  /**
+   * Was "Microcystin screened" until 2026-08-23, when the owner asked for a
+   * nutritional-value seal in its place. The wording stays inside what the
+   * batch lab report actually carries — the values printed on the pack — so it
+   * claims verification, not a specific number. The 62%+ protein figure is
+   * claimed by the hero badge and HERO_CHIPS and is not restated here.
+   */
   {
-    mark: 'MC',
-    ring: 'screened',
-    title: 'Microcystin screened',
-    body: 'Checked against the limit for every harvest.',
+    mark: 'NUTRI',
+    ring: 'value',
+    title: 'Nutritional value',
+    body: 'Protein and the nutrition panel on the pack, confirmed batch by batch.',
   },
 ];
 
@@ -255,7 +262,7 @@ export const HOME_FAQS: HomeFaq[] = [
   },
   {
     q: 'What does it taste like?',
-    a: 'Green and mildly savoury - closer to seaweed than to a flavoured supplement. In a banana or mango smoothie it disappears; in plain water it does not. If taste is a problem, the tablets are the easier route.',
+    a: 'Spirulina is naturally mild and virtually tasteless, so it won’t alter the taste of your food or beverages. You can enjoy it in whichever form you prefer—tablets, powder, or otherwise. Its vibrant green-blue colour comes naturally from its pigments, with no added colours.',
   },
   {
     q: 'How is it shipped, and how fast?',

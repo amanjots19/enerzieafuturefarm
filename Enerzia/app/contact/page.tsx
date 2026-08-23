@@ -7,7 +7,7 @@ import { POSTAL_ADDRESS } from '@/lib/content/social';
 export const metadata: Metadata = {
   title: 'Contact us | Enerzeia Future Farm',
   description:
-    'Reach Enerzeia Future Farm by WhatsApp, phone, or email. Questions about an order, a product, or delivery - we are here to help.',
+    'Reach Enerzeia Future Farm on WhatsApp or by email. Questions about an order, a product, or delivery - we are here to help.',
 };
 
 export default function ContactPage() {

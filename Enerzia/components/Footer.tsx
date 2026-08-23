@@ -7,8 +7,6 @@ import {
   SOCIAL_LINKS,
   SUPPORT_EMAIL,
   SUPPORT_HOURS,
-  SUPPORT_PHONE_DISPLAY,
-  SUPPORT_PHONE_E164,
   SUPPORT_WHATSAPP,
 } from '@/lib/content/social';
 
@@ -27,25 +25,6 @@ function WaIcon() {
       style={{ flexShrink: 0 }}
     >
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function PhoneIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      style={{ flexShrink: 0 }}
-    >
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.4 10.8 19.79 19.79 0 0 1 1.32 2.18 2 2 0 0 1 3.3 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
     </svg>
   );
 }
@@ -99,14 +78,6 @@ export function Footer() {
                 >
                   <WaIcon />
                   <span>WhatsApp us</span>
-                </a>
-                <a
-                  href={`tel:${SUPPORT_PHONE_E164}`}
-                  className="footer-contact-link"
-                  aria-label={`Call us on ${SUPPORT_PHONE_DISPLAY}`}
-                >
-                  <PhoneIcon />
-                  <span>{SUPPORT_PHONE_DISPLAY}</span>
                 </a>
                 <a
                   href={`mailto:${SUPPORT_EMAIL}`}

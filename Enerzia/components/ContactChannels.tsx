@@ -1,24 +1,12 @@
-import {
-  SUPPORT_EMAIL,
-  SUPPORT_PHONE_DISPLAY,
-  SUPPORT_PHONE_E164,
-  SUPPORT_WHATSAPP,
-} from '@/lib/content/social';
+import { SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/content/social';
 
-type ChannelKey = 'wa' | 'tel' | 'mail';
+type ChannelKey = 'wa' | 'mail';
 
 function ChIcon({ ch, size }: { ch: ChannelKey; size: number }) {
   if (ch === 'wa') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-    );
-  }
-  if (ch === 'tel') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.4 10.8 19.79 19.79 0 0 1 1.32 2.18 2 2 0 0 1 3.3 0h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 7.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
       </svg>
     );
   }
@@ -41,17 +29,14 @@ const CHANNELS: {
   {
     key: 'wa',
     label: 'WhatsApp',
-    value: SUPPORT_PHONE_DISPLAY,
+    /**
+     * Not the phone number. The link opens a chat, and the number is not
+     * published anywhere on the site — see the note in lib/content/social.ts.
+     */
+    value: 'Start a chat',
     href: `https://wa.me/${SUPPORT_WHATSAPP}`,
     newTab: true,
-    ariaLabel: `WhatsApp us on ${SUPPORT_PHONE_DISPLAY}`,
-  },
-  {
-    key: 'tel',
-    label: 'Call',
-    value: SUPPORT_PHONE_DISPLAY,
-    href: `tel:${SUPPORT_PHONE_E164}`,
-    ariaLabel: `Call us on ${SUPPORT_PHONE_DISPLAY}`,
+    ariaLabel: 'Message us on WhatsApp',
   },
   {
     key: 'mail',
@@ -63,14 +48,16 @@ const CHANNELS: {
 ];
 
 /**
- * Renders the three contact channel links (WhatsApp, Call, Email) as the
- * full .contact-card treatment — icon circles, label, value. Used on /contact.
+ * Renders the two contact channel links (WhatsApp, Email) as the full
+ * .contact-card treatment — icon circles, label, value. Used on /contact.
  *
- * There was a second `variant="footer"` here. The footer no longer uses it:
- * its "Talk to us" column labels the WhatsApp row "WhatsApp us" rather than
- * repeating the phone number, which is what stops the two phone-bearing rows
- * reading as a duplication bug. The old variant's `.footer-channel` styles are
- * gone, so the branch was removed rather than left to render unstyled.
+ * The Call row is gone (owner's decision, 2026-08-23) — WhatsApp is the one
+ * channel they staff, and it opens a chat rather than a call.
+ *
+ * There was a second `variant="footer"` here. The footer no longer uses it —
+ * its "Talk to us" column has its own markup, and the old variant's
+ * `.footer-channel` styles are gone, so the branch was removed rather than
+ * left to render unstyled.
  */
 export function ContactChannels() {
   return (

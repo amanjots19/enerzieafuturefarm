@@ -3,23 +3,26 @@ import type { SocialLink } from './types';
 /**
  * Contact details and official brand profiles.
  *
- * SUPPORT_EMAIL, SUPPORT_PHONE and SUPPORT_WHATSAPP are the SINGLE source for
- * these values. The contact page, the footer, the Terms and the Privacy Policy
- * must all read from here — the phone number and address must never be typed
- * out a second time somewhere else, because the second copy is the one that
- * goes stale.
+ * SUPPORT_EMAIL and SUPPORT_WHATSAPP are the SINGLE source for these values.
+ * The contact page, the footer, the Terms and the Privacy Policy must all read
+ * from here — the number and address must never be typed out a second time
+ * somewhere else, because the second copy is the one that goes stale.
  *
  * The owner confirmed on 2026-08-13 that support@enerzeiafuturefarm.com is a
  * mailbox they own and monitor, and that the number receives WhatsApp. Both
  * legal documents originally carried malformed Gmail addresses
  * ("gamil.com", and a doubled ".com"); those were corrected to this address on
  * the owner's instruction.
+ *
+ * THERE IS NO PUBLISHED PHONE NUMBER AND NO `tel:` LINK — the owner's decision
+ * on 2026-08-23: WhatsApp is the one voice-free channel they staff, and a
+ * tapped number that rings an unattended phone is worse than no number. The
+ * number itself is not printed anywhere either; it only lives inside the wa.me
+ * link, which opens a chat rather than a call. Do not "restore" a Call row or
+ * print the number beside the WhatsApp row without asking.
  */
 export const SUPPORT_EMAIL = 'support@enerzeiafuturefarm.com';
 
-/** Display form. The tel: and wa.me links use SUPPORT_PHONE_E164. */
-export const SUPPORT_PHONE_DISPLAY = '+91 88263 45094';
-export const SUPPORT_PHONE_E164 = '+918826345094';
 /** wa.me wants the number without the leading '+'. */
 export const SUPPORT_WHATSAPP = '918826345094';
 
@@ -59,4 +62,5 @@ export const SOCIAL_LINKS: SocialLink[] = [
   { name: 'Facebook', href: 'https://www.facebook.com/profile.php?id=61592481037327' },
   { name: 'YouTube', href: 'https://www.youtube.com/@enerzeiafuturefarm' },
   { name: 'Threads', href: 'https://www.threads.com/@enerzeiafuturefarm' },
+  { name: 'LinkedIn', href: 'https://www.linkedin.com/company/enerzeiafuturefarm' },
 ];

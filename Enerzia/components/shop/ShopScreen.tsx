@@ -84,11 +84,20 @@ export function ShopScreen({
           </div>
         </div>
         <div className="hero-art">
+          {/*
+            The owner's own product photograph (supplied 2026-08-23), replacing
+            the "products coming soon" placeholder. It is a square 1254px
+            graphic with its own dark background running edge to edge, which is
+            why `.hero-art` is square and no longer paints the gold glow over
+            it — see styles/shop.css. Served copy is JPEG q80 (423 KB); the
+            2.3 MB PNG original is kept out of `public/` at
+            assets/shop-originals/, matching public/assets/farm/README.md.
+          */}
           <Image
-            src="/assets/products-coming-soon.jpeg"
-            alt="Enerzeia Future Farm spirulina packaging"
-            width={800}
-            height={600}
+            src="/assets/shop/spirulina-tablets-lineup.jpg"
+            alt="Enerzeia Spirulina Tablets in gold-capped jars, 60 tablets and 120 tablets, shown front and back with their composition and nutrition panels, and tablets tipped into a small bowl."
+            width={1254}
+            height={1254}
             priority
           />
         </div>

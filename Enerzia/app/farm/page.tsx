@@ -163,6 +163,7 @@ export default function FarmPage() {
               <blockquote className="farm-byte-quote">{BYTE.quote}</blockquote>
               <figcaption className="farm-byte-who">
                 <span className="farm-byte-name">{BYTE.name}</span>
+                <span className="farm-byte-role">{BYTE.role}</span>
               </figcaption>
             </div>
           </figure>
