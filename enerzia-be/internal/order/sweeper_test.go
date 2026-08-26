@@ -263,3 +263,45 @@ func TestSweepOnceMarkErrorSurfaces(t *testing.T) {
 		t.Errorf("error = %v, want it to wrap the original db error", err)
 	}
 }
+
+func TestSweeperRunDisabledByNonPositiveInterval(t *testing.T) {
+	// The safety switch. A non-positive interval must return IMMEDIATELY and
+	// write nothing — this is what lets a local process run against a database
+	// whose data must not change.
+	//
+	// The uncancelled context is the assertion that matters. Run is given a
+	// context that never expires, so if the guard is ever removed this test
+	// does not fail with a wrong value, it HANGS on the ticker loop until the
+	// suite times out. A cancelled context would let a broken Run return and
+	// pass by accident.
+	for _, interval := range []time.Duration{0, -time.Second} {
+		repo := &fakeSweepStore{markModified: true, orders: []order.Order{
+			{OrderID: "EFF-000001", Lines: []order.Line{testLine("tablets-120", 1)}},
+		}}
+		stock := newFakeStock()
+		sw := newSweeper(repo, stock)
+
+		sw.Run(context.Background(), interval)
+
+		if len(repo.markedIDs) != 0 {
+			t.Errorf("Run(%s): expected no orders claimed, got %v", interval, repo.markedIDs)
+		}
+		if stock.returned != 0 {
+			t.Errorf("Run(%s): expected no stock returned, got %d calls", interval, stock.returned)
+		}
+	}
+}
+
+func TestSweeperRunDisabledDoesNotPanic(t *testing.T) {
+	// time.NewTicker panics on a non-positive duration, so a missing guard
+	// takes the whole API process down at startup rather than turning one
+	// goroutine off. Pinned separately because the failure mode is a panic,
+	// not a wrong result.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Run(0): panicked instead of disabling the sweeper: %v", r)
+		}
+	}()
+
+	newSweeper(&fakeSweepStore{}, newFakeStock()).Run(context.Background(), 0)
+}

@@ -87,7 +87,29 @@ func (s *Sweeper) SweepOnce(ctx context.Context, now time.Time) (int, error) {
 // Run starts a ticker loop that calls SweepOnce on each tick until ctx is
 // cancelled. A sweep failure is logged and the loop continues so one bad
 // tick cannot kill the sweeper.
+//
+// An interval of zero or less DISABLES the sweeper: Run logs that it is off
+// and returns without writing anything. This is the switch that makes it safe
+// to point a local process at a database whose data must not change — the
+// sweeper is the only background writer in the process.
+//
+// The guard is also load-bearing rather than merely defensive:
+// time.NewTicker PANICS on a non-positive duration, so without it
+// SWEEPER_INTERVAL=0 would take the whole API down at startup instead of
+// quietly turning one goroutine off.
 func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		s.logger.InfoContext(ctx, "order: sweep: disabled",
+			slog.Duration("interval", interval))
+		return
+	}
+
+	// Logged on the enabled path too, not just the disabled one. Whether this
+	// process writes to the database in the background is exactly the thing you
+	// want to be able to confirm from the startup log rather than infer.
+	s.logger.InfoContext(ctx, "order: sweep: enabled",
+		slog.Duration("interval", interval))
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {

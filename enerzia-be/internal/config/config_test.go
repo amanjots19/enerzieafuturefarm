@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/enerzia/enerzia-be/internal/config"
 )
@@ -694,4 +695,55 @@ func TestSMTPIsAllOrNothing(t *testing.T) {
 			t.Errorf("error = %v, want it to name SMTP_PORT", err)
 		}
 	})
+}
+
+func TestLoadSweeperInterval(t *testing.T) {
+	// SWEEPER_INTERVAL decides whether this process writes to the database in
+	// the background, so every branch is pinned: the default must stay the
+	// minute it was hardcoded to, 0 must survive Load as 0 (the disable
+	// switch), and a typo must be reported rather than silently falling back
+	// to a value that sweeps.
+	tests := []struct {
+		name    string
+		raw     string
+		want    time.Duration
+		problem string
+	}{
+		{name: "unset defaults to one minute", raw: "", want: time.Minute},
+		{name: "zero disables the sweeper", raw: "0", want: 0},
+		{name: "zero seconds also disables", raw: "0s", want: 0},
+		{name: "explicit duration is honoured", raw: "30s", want: 30 * time.Second},
+		{name: "surrounding whitespace is trimmed", raw: "  5m  ", want: 5 * time.Minute},
+		{name: "unparseable is reported", raw: "soon", problem: "SWEEPER_INTERVAL must be a duration"},
+		{name: "bare number is reported", raw: "60", problem: "SWEEPER_INTERVAL must be a duration"},
+		{name: "negative is reported", raw: "-1m", problem: "SWEEPER_INTERVAL cannot be negative"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := valid()
+			if tc.raw != "" {
+				env["SWEEPER_INTERVAL"] = tc.raw
+			}
+
+			cfg, err := config.Load(stub(env))
+
+			if tc.problem != "" {
+				if err == nil {
+					t.Fatalf("Load(%q) error = nil, want a problem mentioning %q", tc.raw, tc.problem)
+				}
+				if !strings.Contains(err.Error(), tc.problem) {
+					t.Errorf("Load(%q) error = %q, want it to mention %q", tc.raw, err, tc.problem)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Load(%q) error = %v, want nil", tc.raw, err)
+			}
+			if cfg.SweeperInterval != tc.want {
+				t.Errorf("SweeperInterval = %s, want %s", cfg.SweeperInterval, tc.want)
+			}
+		})
+	}
 }

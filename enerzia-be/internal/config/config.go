@@ -28,16 +28,27 @@ const minJWTSecretLen = 32
 
 // Config is the fully validated configuration for the API process.
 type Config struct {
-	AppEnv          Environment
-	Port            int
-	MongoURI        string
-	MongoDB         string
-	JWTSecret       string
-	AllowedOrigins  []string
-	MongoTimeout    time.Duration
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	ShutdownGrace   time.Duration
+	AppEnv         Environment
+	Port           int
+	MongoURI       string
+	MongoDB        string
+	JWTSecret      string
+	AllowedOrigins []string
+	MongoTimeout   time.Duration
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	ShutdownGrace  time.Duration
+
+	// SweeperInterval is how often the abandoned-reservation sweeper runs.
+	//
+	// ZERO DISABLES THE SWEEPER ENTIRELY. That exists for one reason: the
+	// sweeper writes — it marks expired pending orders and returns their stock
+	// to the catalogue — and it was previously hardcoded on, so pointing a
+	// local process at a production .env and running `make run` silently began
+	// mutating live orders and live stock counts sixty seconds later.
+	//
+	// Leave it unset in every deployed environment. Set SWEEPER_INTERVAL=0 when
+	// running against a database whose data you must not touch.
 	SweeperInterval time.Duration
 
 	// Razorpay credentials. All three are required in production; outside
@@ -185,6 +196,24 @@ func Load(getenv Getenv) (Config, error) {
 		problems = append(problems, fmt.Sprintf("PORT must be between 1 and 65535 (got %d)", port))
 	default:
 		cfg.Port = port
+	}
+
+	// SWEEPER_INTERVAL is optional and defaults to the minute it was hardcoded
+	// to, so an environment that does not set it behaves exactly as before.
+	// A negative value is a mistake worth reporting; zero is the documented way
+	// to switch the sweeper off, so it is accepted in silence.
+	if raw := strings.TrimSpace(getenv("SWEEPER_INTERVAL")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		switch {
+		case err != nil:
+			problems = append(problems,
+				fmt.Sprintf("SWEEPER_INTERVAL must be a duration such as 1m or 30s (got %q)", raw))
+		case d < 0:
+			problems = append(problems,
+				fmt.Sprintf("SWEEPER_INTERVAL cannot be negative (got %s) — use 0 to disable the sweeper", d))
+		default:
+			cfg.SweeperInterval = d
+		}
 	}
 
 	if cfg.MongoURI == "" {
