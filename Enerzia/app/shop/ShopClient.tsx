@@ -13,11 +13,12 @@ import { ReviewScreen } from '@/components/shop/ReviewScreen';
 import { ShopScreen } from '@/components/shop/ShopScreen';
 import { TopBar } from '@/components/shop/TopBar';
 import { Banner, SelectionPrompt } from '@/components/shop/controls';
+import type { ProductDTO } from '@/lib/api/types';
 
 import { useShop } from './useShop';
 
-export function ShopClient() {
-  const { state, dispatch, actions } = useShop();
+export function ShopClient({ initialProducts }: { initialProducts?: ProductDTO[] }) {
+  const { state, dispatch, actions } = useShop(initialProducts);
   const lastScreen = useRef(state.screen);
 
   // Razorpay Checkout JS load state. The script is only rendered when the
@@ -70,7 +71,19 @@ export function ShopClient() {
       <Banner
         message={state.banner}
         onDismiss={() => dispatch({ type: 'clearBanner' })}
-        onRetry={state.products.length === 0 && !state.booting ? actions.retryBoot : undefined}
+        /* Retry is offered whenever the boot has finished and something went
+           wrong — it used to also require `state.products.length === 0`, on
+           the reasonable grounds that a shop with products on screen was not
+           broken enough to need one.
+
+           Server rendering broke that assumption. The grid can now be full
+           while the client's refresh failed, which is the case that most
+           needs a retry: what is on screen came from the server and may be up
+           to `revalidate` old, so a shopper could be looking at a price or an
+           in-stock badge that has since changed. Offer the retry on the
+           banner's own terms — the Banner renders nothing without a message,
+           so this stays invisible on a healthy load. */
+        onRetry={!state.booting ? actions.retryBoot : undefined}
       />
       {!state.user && state.cartBuffer.length > 0 && (state.screen === 'shop' || state.screen === 'pdp') && (
         <SelectionPrompt

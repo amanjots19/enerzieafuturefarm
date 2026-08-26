@@ -25,12 +25,17 @@ export function TopBar({
   signOut: () => void;
   dispatch: (a: ShopAction) => void;
 }) {
-  // Two entries out of the shop: the landing page, labelled "About us" rather
-  // than "Home" because the label describes what is there, and the farm page.
-  // Moving between the shop's own screens is handled by the in-screen
-  // "← Back to shop" links, not the header.
+  // Three entries out of the shop: the landing page, labelled "About us" rather
+  // than "Home" because the label describes what is there, the benefits page
+  // and the farm page. Moving between the shop's own screens is handled by the
+  // in-screen "← Back to shop" links, not the header.
+  //
+  // This is the only header carrying a right slot as well, so it is the one
+  // that runs out of room first — below 560px SiteHeader's burger takes all
+  // three labels, and above it they fit inline beside the account and cart.
   const nav: NavItem[] = [
-    { label: 'About us', href: '/' },
+    { label: 'About us', href: '/about' },
+    { label: 'Benefits', href: '/benefits' },
     { label: 'Our Farm', href: '/farm' },
   ];
 

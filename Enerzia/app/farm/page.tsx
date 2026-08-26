@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { SiteHeader, type NavItem } from '@/components/SiteHeader';
 import { Photo } from '@/components/Photo';
+import { pageMetadata } from '@/lib/seo';
 import {
   BYTE,
   FARM_CTA,
@@ -15,17 +16,18 @@ import {
   VISIT,
 } from '@/lib/content/farm';
 
-// This IS the farm page, so the nav offers the two places it is not.
+// This IS the farm page, so the nav offers the three places it is not.
 const FARM_NAV: NavItem[] = [
-  { label: 'Home', href: '/' },
-  { label: 'Shop', href: '/shop' },
+  { label: 'About us', href: '/about' },
+  { label: 'Shop', href: '/shop', pinned: true },
+  { label: 'Benefits', href: '/benefits' },
 ];
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/farm',
   title: 'Our farm - where Enerzeia spirulina is grown',
-  description:
-    'Enerzeia spirulina is grown in our own lined raceway ponds, harvested by filtering, dried at low heat and lab-tested batch by batch. Nothing is bought in and relabelled.',
-};
+  description: 'Enerzeia spirulina is grown in our own lined raceway ponds, harvested by filtering, dried at low heat and lab-tested batch by batch. Nothing is bought in and relabelled.',
+});
 
 /**
  * "Our Farm" — the sourcing page.

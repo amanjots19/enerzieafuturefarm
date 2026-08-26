@@ -18,6 +18,40 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  /**
+   * The bare domain lands on the shop.
+   *
+   * -------------------------------------------------------------------------
+   * WHY 308 AND NOT 307
+   *
+   * `permanent: true` emits a 308, which is what passes the root URL's
+   * accumulated ranking to /shop — a 307 tells search engines the move is
+   * temporary and deliberately withholds that. Since this is the intended
+   * end state, 308 is correct.
+   *
+   * THE COST, WHICH IS REAL: browsers cache a 308 indefinitely and ignore the
+   * server on later visits. Undoing this is therefore NOT just deleting these
+   * lines — anyone who has hit the domain since it shipped keeps redirecting
+   * until they clear their cache. If there is any doubt about the destination,
+   * change `permanent` to false FIRST, confirm the destination is right, and
+   * only then make it permanent.
+   *
+   * The former homepage now lives at /about; the shop's own header links to it
+   * under that label. If this redirect is removed, HOME_PATH in
+   * lib/content/site.ts must go back to '/' in the same change — canonicals,
+   * the sitemap and the brand lockup all read it.
+   * -------------------------------------------------------------------------
+   */
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/shop',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

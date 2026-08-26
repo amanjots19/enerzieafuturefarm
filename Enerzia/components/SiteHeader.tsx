@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { BrandLockup } from '@/components/BrandLockup';
+import { HOME_PATH } from '@/lib/content/site';
 
 /**
  * One header for the whole site.
@@ -28,6 +29,17 @@ import { BrandLockup } from '@/components/BrandLockup';
 export interface NavItem {
   label: string;
   href: string;
+  /**
+   * Keep this entry in the bar at every width instead of letting it fall into
+   * the burger below 560px. Shop is marked this way on every page that is not
+   * the shop: it is the only nav link that is a destination rather than
+   * context, and burying the one commercial link behind a tap on the device
+   * most people arrive on is a self-inflicted wound.
+   *
+   * Use it sparingly — one entry. Two pinned labels plus the shop's account
+   * and cart is the 417px-against-375px overflow the burger exists to prevent.
+   */
+  pinned?: boolean;
 }
 
 export function SiteHeader({ nav, right }: { nav: NavItem[]; right?: ReactNode }) {
@@ -36,6 +48,10 @@ export function SiteHeader({ nav, right }: { nav: NavItem[]; right?: ReactNode }
   const menuId = useId();
   const burgerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Everything the burger is responsible for. A pinned entry is excluded: it
+  // stays in the bar at every width, so the panel must not repeat it.
+  const collapsible = nav.filter((item) => !item.pinned);
 
   // The bar shrinks and gains a surface once the page moves, per the design.
   useEffect(() => {
@@ -88,14 +104,27 @@ export function SiteHeader({ nav, right }: { nav: NavItem[]; right?: ReactNode }
   return (
     <header className={`site-header${scrolled ? ' site-header--scrolled' : ''}`}>
       <div className="site-header-inner">
-        <Link href="/" className="site-header-brand" aria-label="Enerzeia Future Farm — home">
+        {/* HOME_PATH, not "/". The root 308-redirects to the shop, so a bare
+            "/" here would make every logo click pay for a redirect hop before
+            landing in the same place. Pointing straight at the destination is
+            the same journey without the round trip — and if that redirect is
+            ever removed, HOME_PATH goes back to "/" and this follows. */}
+        <Link href={HOME_PATH} className="site-header-brand" aria-label="Enerzeia Future Farm — home">
           <BrandLockup />
         </Link>
 
-        {/* Inline above 560px, hidden below it — the burger takes over there. */}
+        {/* Inline above 560px, hidden below it — the burger takes over there,
+            except for a `pinned` entry, which keeps its place in the bar at
+            every width. A pinned link is NOT repeated in the burger panel
+            below: it is already on screen, and listing it twice makes the menu
+            look like it holds more than it does. */}
         <nav className="site-nav" aria-label="Primary">
           {nav.map((item) => (
-            <Link href={item.href} key={item.href}>
+            <Link
+              href={item.href}
+              key={item.href}
+              className={item.pinned ? 'site-nav-pinned' : undefined}
+            >
               {item.label}
             </Link>
           ))}
@@ -103,10 +132,15 @@ export function SiteHeader({ nav, right }: { nav: NavItem[]; right?: ReactNode }
 
         {right && <div className="site-header-right">{right}</div>}
 
+        {/* No burger when every entry is pinned — there would be nothing
+            behind it. `hidden` rather than a conditional render so the CSS
+            below 560px still has an element to show; React drops it from the
+            accessibility tree either way. */}
         <button
           ref={burgerRef}
           type="button"
           className="site-burger"
+          hidden={collapsible.length === 0}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={menuOpen}
           aria-controls={menuId}
@@ -131,10 +165,10 @@ export function SiteHeader({ nav, right }: { nav: NavItem[]; right?: ReactNode }
         </button>
       </div>
 
-      {menuOpen && (
+      {menuOpen && collapsible.length > 0 && (
         <div className="site-menu" id={menuId} ref={menuRef}>
-          <nav className="site-menu-list" aria-label="Primary">
-            {nav.map((item) => (
+          <nav className="site-menu-list" aria-label="More pages">
+            {collapsible.map((item) => (
               <Link
                 href={item.href}
                 key={item.href}

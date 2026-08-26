@@ -15,38 +15,48 @@ import {
   TASTE_TIPS,
 } from '@/lib/content/home';
 import { TESTIMONIALS } from '@/lib/content/testimonials';
+import { pageMetadata } from '@/lib/seo';
 
-// No "Home" — this is home, so there is nothing to link back to.
-const HOME_NAV: NavItem[] = [
-  { label: 'Shop', href: '/shop' },
+// No "About us" — this IS that page. Shop is pinned, so it stays in the bar on
+// a phone rather than falling into the burger with the other two.
+const ABOUT_NAV: NavItem[] = [
+  { label: 'Shop', href: '/shop', pinned: true },
+  { label: 'Benefits', href: '/benefits' },
   { label: 'Our Farm', href: '/farm' },
 ];
 
-export const metadata: Metadata = {
-  title: 'Enerzeia Future Farm - spirulina grown on our own farm',
-  description:
-    'Spirulina harvested on our own farm, sun-dried at low heat and lab-tested batch by batch. Powder and tablets, FSSAI licensed, shipped across India.',
-};
+export const metadata: Metadata = pageMetadata({
+  path: '/about',
+  title: 'About us - spirulina grown on our own farm | Enerzeia Future Farm',
+  description: 'Who we are: spirulina harvested on our own farm, sun-dried at low heat and lab-tested batch by batch. How buyers use it, and how every batch is checked before it ships.',
+});
 
 /**
- * The homepage. A server component: everything here is static content, and the
- * four interactive pieces are isolated client islands (AnnouncementBar,
- * SiteHeader, HomeFaqList).
+ * "About us" — the brand story page.
  *
- * The #farm and #benefits sections from the design are not built yet — they
- * are getting their own pages — which is why the header's Benefits and Our
- * Farm entries render inert rather than as anchors into this page.
+ * THIS WAS THE HOMEPAGE, at `/`, until the root was pointed at the shop (see
+ * the redirect in next.config.ts). Nothing about the page itself changed in
+ * that move; it kept its `.home-*` class names, which are now the shared type
+ * scale for /about, /farm and /benefits rather than one page's private
+ * stylesheet. Renaming them would be a large diff for no behaviour change.
+ *
+ * A server component: everything here is static content, and the interactive
+ * pieces are isolated client islands (AnnouncementBar, SiteHeader,
+ * HomeFaqList).
+ *
+ * The design's #farm and #benefits sections were never built into this page —
+ * both got their own routes instead (/farm, /benefits), which is where the
+ * header's two entries point.
  *
  * The footer comes from the root layout, so it is not rendered here.
  */
-export default function Home() {
+export default function AboutPage() {
   return (
     <>
       {/* The announcement bar lives in the root layout so it sits above every
-          header, not just this one. No "Home" entry here — this is home. No
-          cart or account either; both are shop-only, so the homepage never
-          implies a cart it cannot show. */}
-      <SiteHeader nav={HOME_NAV} />
+          header, not just this one. No cart or account in this header; both are
+          shop-only, so this page never implies a cart it cannot show. */}
+      <SiteHeader nav={ABOUT_NAV} />
 
       <main className="home">
         {/* ---------------------------------------------------------- hero */}

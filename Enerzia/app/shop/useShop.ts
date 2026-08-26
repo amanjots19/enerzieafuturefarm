@@ -28,6 +28,7 @@ import { clearToken, getToken, onUnauthorized, setToken } from '@/lib/api/token'
 import { initialState } from '@/lib/shop/pricing';
 import { shopReducer } from '@/lib/shop/reducer';
 import type { ShopAction } from '@/lib/shop/reducer';
+import type { ProductDTO } from '@/lib/api/types';
 import type { Address, CartDTO, RequestKey, ShopState } from '@/lib/shop/types';
 
 // ── offline cart buffer helpers ──────────────────────────────────────────────
@@ -167,12 +168,28 @@ export interface ShopActions {
  * Every network command follows: guard → reqStart → await api → loaded | reqFail.
  * The reducer keeps ZERO I/O, no Date.now, no Math.random.
  */
-export function useShop(): {
+export function useShop(initialProducts?: ProductDTO[]): {
   state: ShopState;
   dispatch: (a: ShopAction) => void;
   actions: ShopActions;
 } {
-  const [state, dispatch] = useReducer(shopReducer, initialState);
+  /**
+   * Seeded with whatever the server already rendered, so the first client
+   * render is byte-identical to the server's and React has nothing to
+   * reconcile. Passing these through `useReducer`'s init argument rather than
+   * dispatching them in an effect is what avoids the hydration mismatch: an
+   * effect runs AFTER the first render, which is exactly too late.
+   *
+   * `loadProducts` still runs on boot and overwrites this. That is deliberate
+   * - the server copy can be up to CATALOGUE_REVALIDATE_SECONDS old, so a
+   * shopper must not be shown a stale price or an in-stock badge for
+   * something that has sold out since it was rendered.
+   */
+  const [state, dispatch] = useReducer(shopReducer, initialState, (base) =>
+    initialProducts && initialProducts.length > 0
+      ? { ...base, products: initialProducts }
+      : base,
+  );
 
   /**
    * Tracks which keys have a request currently in flight. MUST be checked
