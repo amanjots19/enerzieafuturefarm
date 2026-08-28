@@ -1,3 +1,4 @@
+import { formatAccountPhone } from './phone';
 import type {
   Address,
   AddressDTO,
@@ -58,10 +59,10 @@ export function addressSummary(addr: Address, user: UserDTO | null): string {
     addr.name,
     addr.line1,
     [addr.city, addr.state, addr.pin].filter(Boolean).join(', '),
-    '+91 ' + (user?.phone ?? ''),
+    formatAccountPhone(user?.phone ?? ''),
     addr.email,
   ]
-    .filter((x) => x && x.trim() && x !== '+91 ')
+    .filter((x) => x && x.trim())
     .join(' · ');
 }
 
@@ -76,10 +77,10 @@ export function validateAddress(
   // Order and wording mirror the API exactly (product.md §3.4) — a client that
   // validated in a different order would show a different message than the
   // server would for the same input.
-  if (!/^\d{10}$/.test(a.phone))
+  if (!/^\d{8,15}$/.test(a.phone))
     return {
       field: 'phone',
-      message: 'Please enter a valid 10-digit mobile number for delivery.',
+      message: 'Please enter a valid mobile number for delivery.',
     };
   if (a.line1.trim().length < 6)
     return { field: 'line1', message: 'Please enter your full street address.' };

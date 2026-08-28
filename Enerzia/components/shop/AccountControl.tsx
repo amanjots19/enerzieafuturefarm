@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { formatAccountPhone } from '@/lib/shop/phone';
 import type { ShopAction } from '@/lib/shop/reducer';
 import type { UserDTO } from '@/lib/shop/types';
 
@@ -112,7 +113,7 @@ export function AccountControl({
         >
           {user ? (
             <>
-              <div className="account-menu-header">+91 {user.phone}</div>
+              <div className="account-menu-header">{formatAccountPhone(user.phone)}</div>
               <button
                 type="button"
                 role="menuitem"

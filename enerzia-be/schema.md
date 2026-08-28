@@ -154,14 +154,14 @@ identity — there is no password and no email login.
 ```js
 {
   _id: ObjectId("..."),
-  phone: "9876543210",               // 10 digits, no +91, no spaces
+  phone: "919876543210",             // E.164 digits: country code, no +, no spaces
   addresses: [                       // [] until the shopper saves one
     {
       _id:   ObjectId("..."),        // referenceable, editable, selectable
       label: "Home",                 // optional, shopper-supplied
       name:  "Ananya Sharma",
       email: "ananya@example.com",
-      phone: "9876543210",             // delivery contact; ABSENT on pre-2026-08-17 addresses
+      phone: "919876543210",           // delivery contact, same format as above; ABSENT on pre-2026-08-17 addresses
       line1: "12, Anand Residency, MG Road",
       city:  "Pune",
       state: "Maharashtra",
@@ -177,6 +177,37 @@ identity — there is no password and no email login.
 | index | fields | why |
 |---|---|---|
 | `phone_1` | `phone`, **unique** | one account per number; makes the verify-time upsert race-safe |
+
+### Phone format — changed 2026-08-24
+
+`phone` stores **what MSG91 verified**: digits, country code included, no `+`,
+8–15 digits (E.164's ceiling is 15). `919876543210`, `12025551234`.
+
+It used to store ten digits with the `91` stripped, which meant the server
+rejected every non-Indian number *after* MSG91 had verified it. See
+`roadmap.md` §Auth for the failure and why stripping is not coming back.
+
+**Existing documents still hold the ten-digit form, and are migrated lazily on
+sign-in rather than by a one-shot script.** `UpsertUser` looks for the E.164
+form; on a miss, if the number is `91` + ten digits, it looks up the legacy
+ten-digit document and rewrites `phone` **in place**, keeping `_id`. That is
+the whole point: carts, addresses and orders reference the user by `_id`, so an
+upgrade in place keeps them attached, where an insert would strand them against
+a second, empty account.
+
+Consequences worth knowing:
+
+- **A dormant account is not migrated until its owner returns.** That is fine —
+  nothing reads `phone` except sign-in — but it means the collection holds both
+  shapes indefinitely. A sweep to normalise the rest is tracked in `tasks.md`
+  and is deliberately not automatic.
+- **`ValidPhone` accepts 8–15 digits, so a legacy ten-digit value is still
+  valid.** Old documents and old addresses keep working untouched; nothing
+  needs a backfill to stay readable.
+- Every legacy row came from an MSG91-verified Indian mobile, which starts 6–9,
+  so prefixing `91` is correct for all of them. A ten-digit row that is really
+  a foreign E.164 number (Norway is `47` + 8 = 10 digits) cannot be one of
+  ours, because none could have been stored before this change.
 
 **Addresses are an array, not a collection** — decision 5. Each entry carries
 its own `_id`, so the API can address one directly

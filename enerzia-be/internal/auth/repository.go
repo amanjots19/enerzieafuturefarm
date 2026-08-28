@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -19,6 +20,11 @@ const (
 	fieldID        = "_id"
 	fieldPhone     = "phone"
 	fieldCreatedAt = "createdAt"
+	fieldUpdatedAt = "updatedAt"
+
+	// opSet is MongoDB's $set operator, named so the auth package does not
+	// repeat the literal in every write.
+	opSet = "$set"
 )
 
 // ErrUserNotFound is returned when a token names a user who no longer exists.
@@ -101,7 +107,7 @@ func (r *Repository) RecordFailedAttempt(ctx context.Context, id bson.ObjectID) 
 func (r *Repository) ConsumeCode(ctx context.Context, id bson.ObjectID) (bool, error) {
 	res, err := r.codes.UpdateOne(ctx,
 		bson.D{{Key: fieldID, Value: id}, {Key: "consumed", Value: false}},
-		bson.D{{Key: "$set", Value: bson.D{{Key: "consumed", Value: true}}}},
+		bson.D{{Key: opSet, Value: bson.D{{Key: "consumed", Value: true}}}},
 	)
 	if err != nil {
 		return false, fmt.Errorf("auth: consume code: %w", err)
@@ -109,27 +115,123 @@ func (r *Repository) ConsumeCode(ctx context.Context, id bson.ObjectID) (bool, e
 	return res.ModifiedCount == 1, nil
 }
 
+// legacyIndianPhone returns the pre-2026-08-24 stored form of an Indian
+// number — the ten subscriber digits with the "91" removed — and whether phone
+// has that shape at all.
+//
+// Only Indian numbers have a legacy form, because ten-digit storage is the
+// only shape this collection ever held and every row in it came from an
+// MSG91-verified Indian mobile.
+func legacyIndianPhone(phone string) (string, bool) {
+	rest, found := strings.CutPrefix(phone, IndiaCallingCode)
+	if !found || len(rest) != PhoneLength {
+		return "", false
+	}
+	return rest, true
+}
+
 // UpsertUser returns the user for a phone number, creating them on first
 // sign-in. The unique index on phone makes this safe under a race: a losing
 // concurrent insert fails and the retry finds the winner's document.
+//
+// It also performs the lazy migration described in schema.md §users. Phone
+// numbers used to be stored with the country code stripped, so an Indian
+// shopper who signed in before 2026-08-24 has a ten-digit document. Upserting
+// on the new form alone would insert a SECOND, EMPTY account and strand their
+// cart, addresses and orders — all of which reference the user by _id, not by
+// number.
+//
+// So the order is: new form, then legacy form upgraded IN PLACE, then create.
+// Upgrading in place is the whole point — the _id survives, so everything
+// hanging off it stays attached.
 func (r *Repository) UpsertUser(ctx context.Context, phone string, now time.Time) (User, error) {
+	// 1. The number in its current form. No upsert: a miss here is not yet a
+	//    new shopper, it may be an un-migrated one.
+	user, err := r.touchUser(ctx, phone, now)
+	switch {
+	case err == nil:
+		return user, nil
+	case !errors.Is(err, mongo.ErrNoDocuments):
+		return User{}, fmt.Errorf("auth: upsert user: %w", err)
+	}
+
+	// 2. An Indian number may still be stored in the old ten-digit form.
+	if legacy, ok := legacyIndianPhone(phone); ok {
+		migrated, migrateErr := r.migrateLegacyUser(ctx, legacy, phone, now)
+		switch {
+		case migrateErr == nil:
+			return migrated, nil
+		case errors.Is(migrateErr, mongo.ErrNoDocuments):
+			// No legacy document either — genuinely a new shopper, fall through.
+		case mongo.IsDuplicateKeyError(migrateErr):
+			// A document at the new form appeared between step 1 and here, so
+			// the rename collided with the unique index. The winner is the one
+			// we were looking for in the first place; re-read it rather than
+			// failing a sign-in over a race we can resolve.
+			winner, reReadErr := r.touchUser(ctx, phone, now)
+			if reReadErr != nil {
+				return User{}, fmt.Errorf("auth: upsert user: after migration race: %w", reReadErr)
+			}
+			return winner, nil
+		default:
+			return User{}, fmt.Errorf("auth: upsert user: migrate legacy: %w", migrateErr)
+		}
+	}
+
+	// 3. First sign-in. The unique index keeps the upsert race-safe.
 	update := bson.D{
-		{Key: "$set", Value: bson.D{{Key: "updatedAt", Value: now}}},
+		{Key: opSet, Value: bson.D{{Key: fieldUpdatedAt, Value: now}}},
 		{Key: "$setOnInsert", Value: bson.D{
 			{Key: fieldPhone, Value: phone},
 			{Key: fieldCreatedAt, Value: now},
 		}},
 	}
 
-	var user User
-	err := r.users.FindOneAndUpdate(ctx,
+	var created User
+	if err := r.users.FindOneAndUpdate(ctx,
 		bson.D{{Key: fieldPhone, Value: phone}}, update,
 		options.FindOneAndUpdate().
 			SetUpsert(true).
 			SetReturnDocument(options.After),
+	).Decode(&created); err != nil {
+		return User{}, fmt.Errorf("auth: upsert user: %w", err)
+	}
+	return created, nil
+}
+
+// touchUser stamps updatedAt on an existing user and returns them. It does not
+// create: a miss returns mongo.ErrNoDocuments for the caller to interpret.
+func (r *Repository) touchUser(ctx context.Context, phone string, now time.Time) (User, error) {
+	var user User
+	err := r.users.FindOneAndUpdate(ctx,
+		bson.D{{Key: fieldPhone, Value: phone}},
+		bson.D{{Key: opSet, Value: bson.D{{Key: fieldUpdatedAt, Value: now}}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	).Decode(&user)
 	if err != nil {
-		return User{}, fmt.Errorf("auth: upsert user: %w", err)
+		return User{}, err
+	}
+	return user, nil
+}
+
+// migrateLegacyUser rewrites a ten-digit users.phone to its E.164 form in
+// place, keeping _id, and returns the upgraded document.
+//
+// A miss returns mongo.ErrNoDocuments; a collision with an existing document
+// at the new number returns a duplicate-key error. Both are the caller's to
+// interpret — neither is a failure of this function.
+func (r *Repository) migrateLegacyUser(ctx context.Context, legacy, phone string, now time.Time) (User, error) {
+	var user User
+	err := r.users.FindOneAndUpdate(ctx,
+		bson.D{{Key: fieldPhone, Value: legacy}},
+		bson.D{{Key: opSet, Value: bson.D{
+			{Key: fieldPhone, Value: phone},
+			{Key: fieldUpdatedAt, Value: now},
+		}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Decode(&user)
+	if err != nil {
+		return User{}, err
 	}
 	return user, nil
 }

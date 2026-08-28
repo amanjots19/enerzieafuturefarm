@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -14,7 +15,7 @@ import (
 // Service-level failures. Each maps to exactly one API response, so the
 // handler never has to interpret a database error.
 var (
-	// ErrInvalidPhone means the number is not ten digits.
+	// ErrInvalidPhone means the number is not a storable phone number.
 	ErrInvalidPhone = errors.New("auth: invalid phone number")
 	// ErrInvalidCodeShape means the code is not six digits. It says nothing
 	// about whether the code was right.
@@ -258,9 +259,13 @@ func (s *Service) CreateSession(ctx context.Context, accessToken string) (Verify
 
 	phone, err := normalizePhone(rawPhone)
 	if err != nil {
-		// Not 10 digits after stripping the country code — reject rather than
-		// store a malformed identity that would silently create a second account.
-		return VerifyResult{}, ErrSessionRejected
+		// MSG91 verified something this server cannot store as a phone number —
+		// an email identifier if the widget is not mobile-only, or a number
+		// outside E.164's bounds. Wrapped rather than replaced so the handler
+		// can log the SHAPE of what was refused: before 2026-08-24 this returned
+		// a bare sentinel, which made a rejection here indistinguishable in the
+		// log from one by MSG91, and cost a live debugging session.
+		return VerifyResult{}, fmt.Errorf("%w: %w", ErrSessionRejected, err)
 	}
 
 	now := s.now()
@@ -276,19 +281,57 @@ func (s *Service) CreateSession(ctx context.Context, accessToken string) (Verify
 	return VerifyResult{Token: token, ExpiresAt: expiresAt, User: user}, nil
 }
 
-// normalizePhone strips the Indian country code from a raw phone string and
-// validates the result is exactly 10 digits.
+// PhoneRejectedError reports that MSG91 verified an identifier this server
+// cannot store as a phone number.
 //
-// MSG91 returns the number with the country code, e.g. "919999999999". The
-// users collection stores 10 digits ("9999999999"). A mismatch here would
-// silently create two accounts for the same shopper.
+// It carries the SHAPE of the rejected value and never the value itself, which
+// is a customer's phone number and does not belong in a log. Digits plus the
+// leading two characters is enough to tell an email address from a number, and
+// a US number from an Indian one, which is exactly what was missing when
+// international sign-in was failing silently: a normalisation rejection and an
+// MSG91 rejection wrote the same log line, so neither could be ruled out.
+//
+// Two leading characters is a country calling code, not an identifier.
+type PhoneRejectedError struct {
+	// Digits is the length of the value after trimming a leading '+'.
+	Digits int
+	// Prefix is its first two characters, or fewer if it is shorter.
+	Prefix string
+}
+
+func (e *PhoneRejectedError) Error() string {
+	return fmt.Sprintf("auth: verified identifier is not a storable phone number (%d chars, prefix %q)",
+		e.Digits, e.Prefix)
+}
+
+// normalizePhone reduces the identifier MSG91 verified to the form stored in
+// users.phone: digits only, country code included, no '+' (schema.md §users).
+//
+// **It does not strip the country code, and must not be changed to.** Until
+// 2026-08-24 it removed a leading "91" and demanded exactly ten digits, which
+// rejected every non-Indian number AFTER MSG91 had verified it — the shopper
+// received the SMS, entered the right code, and was told sign-in failed.
+// Storing what MSG91 returns removes the transformation and the bug with it.
+// roadmap.md §Auth carries the full account.
+//
+// The single remaining transformation is defensive: MSG91 documents the
+// identifier as bare digits, but if it ever answered "+919999999999" instead,
+// an untrimmed '+' would take sign-in down for every shopper at once. Trimming
+// one costs nothing and removes that outage.
 func normalizePhone(raw string) (string, error) {
-	s := raw
-	if len(s) == 12 && s[:2] == "91" {
-		s = s[2:]
-	}
+	s := strings.TrimPrefix(strings.TrimSpace(raw), "+")
 	if !ValidPhone(s) {
-		return "", fmt.Errorf("auth: phone %q does not reduce to 10 digits", raw)
+		return "", &PhoneRejectedError{Digits: len(s), Prefix: prefixOf(s)}
 	}
 	return s, nil
+}
+
+// prefixOf returns the first two characters of s, or all of them if shorter.
+// Sliced by byte rather than rune deliberately: a value reaching here is not
+// digits, so it is already malformed, and a byte prefix cannot panic on one.
+func prefixOf(s string) string {
+	if len(s) <= 2 {
+		return s
+	}
+	return s[:2]
 }

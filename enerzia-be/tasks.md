@@ -10,6 +10,13 @@ Status: `TODO` · `WIP` · `DONE` · `BLOCKED`
 
 ## In progress
 
+**14.1 — international sign-in: DONE (2026-08-24).** `make check` green,
+storefront builds. **Delivery stays India-only** — only the identity went
+international; 14.3 records that boundary so nobody "finishes the job" by
+widening the PIN rule. **Still to do: the live sign-in test, which only the
+owner can run** (a real OTP writes real user documents), and 14.2's sweep of
+dormant ten-digit rows, which is optional by design.
+
 **Phase 11 (order book & shipping labels)** — contract in `roadmap.md` §Admin
 orders and `schema.md` §orders, landed 2026-08-17. **11.1 and 11.2 DONE.**
 
@@ -448,6 +455,16 @@ token refresh, an outbox worker or a third-party webhook to dedupe.
 | what | why | status |
 |---|---|---|
 | `SHIP_FROM_*` (name, line1, city, state, pin, phone) | the return address printed on every label | **waiting** — owner puts them straight into `.env`; `.env.example` carries the empty keys. 11.6 ships against an unconfigured origin (503) so nothing is blocked. |
+
+---
+
+## Phase 14 — International sign-in
+
+| id | task | status | notes |
+|---|---|---|---|
+| 14.1 | Store the verified number as E.164, widen `ValidPhone` | DONE | **The bug**: `normalizePhone` stripped a `91` prefix and demanded exactly ten digits, so MSG91 verified an international number and *this server* threw the sign-in away — the shopper got the SMS, entered the right code, and was told verification failed. Confirmed from the live journal before any code changed: two `auth: session token rejected` lines with `token_length:160` and **no `msg91_*` fields**, at 16:31, with an Indian number succeeding (200) at 16:34. **Contracts first** (owner's approval): `roadmap.md` §Auth (trap 2 inverted — store the identifier as it arrives; 200 example now `919876543210`), `schema.md` §users (format + the lazy-migration section), `product.md` §1/§3.3/§3.4. **Code**: `phonePattern` `^\d{10}$` → `^\d{8,15}$` (E.164's ceiling; the floor rejects garbage). `normalizePhone` no longer transforms — it trims one optional leading `+` and validates, nothing else. **The range still admits a legacy ten-digit value on purpose**, so old documents and old addresses stay valid with no backfill. **Migration is lazy and in place** — `UpsertUser` probes the E.164 form (no upsert), then, only for `91`+ten digits, renames the legacy document **keeping `_id`**, then creates. Keeping `_id` is the whole point: carts, addresses and orders reference the user by `_id`, so an insert would have stranded all three against a second, empty account. A duplicate-key on the rename means a document appeared at the new form mid-flight; that re-reads rather than failing a sign-in. Foreign numbers skip the legacy probe entirely, so nobody pays a query for a shape they never had. **Diagnostics** were part of the fix, not a bonus: a rejection by us and a rejection by MSG91 wrote the same log line, which is why this took a live debugging session to find. `PhoneRejectedError` now carries the **shape** of what was refused — digit count and the leading two characters, never the value, which is a customer's phone number — and the handler logs `reason:phone_unusable` with `phone_chars`/`phone_prefix` against MSG91's `reason:msg91_rejected`. A test asserts the two are distinguishable in the log **and** identical to the client, since which check failed is enumerable if it leaks. **Frontend** (`Enerzia/`, spanning the boundary deliberately — four screens hardcoded `+91 {phone}` and would have labelled a French shopper `+91 33612345678`): new `lib/shop/phone.ts` with `accountPhoneE164`/`formatAccountPhone`, used by AccountControl, CartScreen, ReviewScreen, DoneScreen, `addressSummary` and Razorpay's `prefill.contact`. **It handles the legacy shape too** — tokens last 30 days, so `GET /auth/me` returns un-migrated ten-digit numbers for a month after deploy, and a bare `'+' + phone` would have sent Razorpay `+9876543210`. Address phone cap 10 → 15 in the reducer (at 10 a pasted `+91…` silently lost its last two digits and read as the shopper's own typo). **Verified**: `make check` green — lint 0, `internal/auth` 94.6% → 94.9%, total 95.5%. `npx tsc --noEmit` and `npm run build` clean. `formatAccountPhone`/`accountPhoneE164` compiled and **executed** over six inputs including the legacy case. **NOT verified live** — completing a real sign-in needs a real OTP against live Atlas, which writes real user documents; that is the owner's to run after deploy. Success looks like a 200 on `POST /api/v1/auth/session`; failure now names its own cause in the journal. |
+| 14.2 | Sweep dormant ten-digit `users.phone` rows to E.164 | TODO | Not required for correctness — 14.1's read-through upgrade migrates an account when its owner next signs in, so both shapes coexist safely and indefinitely. This is for data uniformity only. A one-shot `updateMany({phone: /^\d{10}$/}, [{$set: {phone: {$concat: ["91", "$phone"]}}}])`; every legacy row came from an MSG91-verified Indian mobile, so prefixing `91` is correct for all of them. **Deliberately not automatic and not run on deploy** — it rewrites the identity of every account, and a read-through that already works is not worth that risk on a timer. |
+| 14.3 | Selling outside India | NOT PLANNED | Recorded so the boundary is explicit. 14.1 widened **who can sign in**, nothing else: money is INR, Razorpay collects INR, shipping is ₹50 / free over ₹499, and an address still needs an Indian six-digit PIN and an Indian state. Shipping abroad means couriers, customs, duties and per-country rates — a business decision, not a bug fix. Do not "finish the job" by widening the PIN rule. |
 
 ---
 

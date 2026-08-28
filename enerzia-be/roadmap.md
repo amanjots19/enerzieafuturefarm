@@ -270,19 +270,31 @@ Two traps, both load-bearing:
 1. **Success is signalled by `type`, not by the HTTP status.** MSG91 can answer
    200 with `type: "error"`. Checking the status alone would accept a failed
    verification as a valid sign-in — which is the whole authentication check.
-2. **The number comes back with its country code** (`919999999999`), while
-   `users.phone` stores 10 digits (`schema.md` §users). Strip the `91` prefix
-   and validate the remainder is exactly 10 digits before upserting, or the
-   same shopper becomes two accounts.
+2. **Store the identifier as it arrives** — digits only, country code included,
+   no `+` (`schema.md` §users). Do not strip the country code.
 
-**200** — identical to what the old verify endpoint returned, so nothing
-downstream changes:
+> **This REVERSES the original rule, on 2026-08-24.** Until then the server
+> stripped a `91` prefix and required exactly ten digits, which silently
+> rejected every non-Indian number *after* MSG91 had already verified it: the
+> shopper received the SMS, entered the right code, and got "We could not
+> verify that sign-in." The failure was invisible in the logs because a
+> normalisation rejection and an MSG91 rejection wrote the same line.
+>
+> Stripping was never load-bearing — it existed only because `users.phone`
+> stored ten digits. Storing what MSG91 returns removes the transformation, and
+> with it the bug. **Do not reintroduce a country-code strip.**
+
+The one remaining transformation is defensive: a single leading `+` is trimmed
+before validation, because MSG91 returning `+919999999999` instead of
+`919999999999` would otherwise take sign-in down for everybody at once.
+
+**200** — shape unchanged; `phone` now carries the country code:
 ```json
 {
   "data": {
     "token": "<jwt>",
     "expiresAt": "2026-09-06T10:30:00Z",
-    "user": { "id": "665f...", "phone": "9876543210", "createdAt": "2026-08-07T10:30:00Z" }
+    "user": { "id": "665f...", "phone": "919876543210", "createdAt": "2026-08-07T10:30:00Z" }
   }
 }
 ```
@@ -303,16 +315,18 @@ logged and never returned.
 > an email address. `users.phone` is the identity (`schema.md` §users, unique
 > index), so there is nothing to key such an account on — the server correctly
 > rejects it with the usual 401, but the shopper sees "we could not verify that
-> sign-in" *after* MSG91 told them they succeeded, which is baffling and
-> unloggable from their side.
+> sign-in" *after* MSG91 told them they succeeded, which is baffling.
 >
 > This is a setting in MSG91's panel, not in this codebase. Nothing here can
-> enforce it and nothing here will explain it, so if sign-in ever starts
-> failing for users who swear they verified successfully, **check the widget's
-> channel configuration first.**
+> enforce it, so if sign-in ever starts failing for users who swear they
+> verified successfully, **check the widget's channel configuration first.**
 >
-> Changing this would not be a config tweak but an identity-model change,
-> touching `users`, the JWT subject and every order's ownership.
+> It is no longer *unloggable*, though: a rejection at this server's own
+> validation now logs `reason` plus the digit count and leading two digits of
+> what was rejected — enough to tell an email from a phone, and a US number
+> from an Indian one, without writing a customer's number into the journal. An
+> MSG91 rejection still logs its `msg91_*` fields. The two are distinguishable
+> in the log, which they were not before 2026-08-24.
 
 ### `GET /api/v1/auth/me` — **auth**
 

@@ -1,3 +1,4 @@
+import { formatAccountPhone } from '@/lib/shop/phone';
 import { freeShipHint, rupeeFromPaise } from '@/lib/shop/pricing';
 import type { ShopActions } from '@/app/shop/useShop';
 import type { ShopAction } from '@/lib/shop/reducer';
@@ -116,7 +117,7 @@ export function CartScreen({
 
           <div className="panel">
             <h3>Delivery address</h3>
-            <p className="panel-sub">Signed in as +91 {state.user?.phone ?? ''}</p>
+            <p className="panel-sub">Signed in as {formatAccountPhone(state.user?.phone ?? '')}</p>
 
             {/* Saved address radio list */}
             {hasAddresses && !state.showAddressForm && (

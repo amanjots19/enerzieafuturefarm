@@ -241,25 +241,78 @@ func TestConsumeCodeWrapsErrors(t *testing.T) {
 	}
 }
 
-func TestUpsertUserCreatesOnFirstSignIn(t *testing.T) {
-	repo, fake := newAuthRepo(t)
-	now := time.Now()
-	fake.Respond("findAndModify", mongotest.Reply(bson.D{
+// userDoc is a users document as the fake returns it from findAndModify.
+func userDoc(id bson.ObjectID, phone string, now time.Time) bson.D {
+	return bson.D{
 		{Key: "value", Value: bson.D{
-			{Key: "_id", Value: bson.NewObjectID()},
-			{Key: "phone", Value: testPhone},
+			{Key: "_id", Value: id},
+			{Key: "phone", Value: phone},
 			{Key: "createdAt", Value: now},
 			{Key: "updatedAt", Value: now},
 		}},
 		{Key: "ok", Value: 1},
-	}))
+	}
+}
 
-	user, err := repo.UpsertUser(t.Context(), testPhone, now)
+// noDoc is findAndModify's "matched nothing" reply, which the driver turns
+// into mongo.ErrNoDocuments.
+func noDoc() bson.D {
+	return bson.D{{Key: "value", Value: nil}, {Key: "ok", Value: 1}}
+}
+
+// findAndModifyCount counts the probes UpsertUser actually issued. The number
+// matters: an extra probe is a query per sign-in for every shopper.
+func findAndModifyCount(fake *mongotest.Server) int {
+	n := 0
+	for _, c := range fake.Commands() {
+		if c == "findAndModify" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestUpsertUserReturnsAnExistingUserWithoutUpserting(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	now := time.Now()
+	const e164 = "919876543210"
+	fake.Respond("findAndModify", mongotest.Reply(userDoc(bson.NewObjectID(), e164, now)))
+
+	user, err := repo.UpsertUser(t.Context(), e164, now)
 	if err != nil {
 		t.Fatalf("UpsertUser() error = %v, want nil", err)
 	}
-	if user.Phone != testPhone {
-		t.Errorf("phone = %q, want %q", user.Phone, testPhone)
+	if user.Phone != e164 {
+		t.Errorf("phone = %q, want %q", user.Phone, e164)
+	}
+	if n := findAndModifyCount(fake); n != 1 {
+		t.Errorf("findAndModify called %d times, want 1 — a known shopper must cost one query", n)
+	}
+	req, _ := fake.LastRequest("findAndModify")
+	// The first probe must NOT upsert. If it did, a legacy ten-digit shopper
+	// would get a second, empty account before the migration ever ran.
+	if _, err := req.Doc.LookupErr("upsert"); err == nil {
+		t.Error("the first probe must not upsert, or the legacy lookup is unreachable")
+	}
+}
+
+func TestUpsertUserCreatesOnFirstSignIn(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	now := time.Now()
+	const e164 = "919876543210"
+	// miss on the new form, miss on the legacy form, then the insert.
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Reply(noDoc()),
+		mongotest.Reply(userDoc(bson.NewObjectID(), e164, now)),
+	)
+
+	user, err := repo.UpsertUser(t.Context(), e164, now)
+	if err != nil {
+		t.Fatalf("UpsertUser() error = %v, want nil", err)
+	}
+	if user.Phone != e164 {
+		t.Errorf("phone = %q, want %q", user.Phone, e164)
 	}
 	if user.ID.IsZero() {
 		t.Error("the returned user has no id")
@@ -283,11 +336,169 @@ func TestUpsertUserCreatesOnFirstSignIn(t *testing.T) {
 	}
 }
 
+// TestUpsertUserMigratesALegacyDocumentInPlace is the heart of the lazy
+// migration (schema.md §users). The _id must survive: carts, addresses and
+// orders all reference the user by _id, so an insert instead of a rename would
+// strand every one of them against a second, empty account.
+func TestUpsertUserMigratesALegacyDocumentInPlace(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	now := time.Now()
+	existing := bson.NewObjectID()
+	const legacy = "9876543210"
+	const e164 = "91" + legacy
+
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),                      // nothing at the new form
+		mongotest.Reply(userDoc(existing, e164, now)), // the legacy doc, renamed
+	)
+
+	user, err := repo.UpsertUser(t.Context(), e164, now)
+	if err != nil {
+		t.Fatalf("UpsertUser() error = %v, want nil", err)
+	}
+	if user.ID != existing {
+		t.Errorf("id = %v, want %v — migrating must keep the _id, or the shopper loses their orders", user.ID, existing)
+	}
+	if user.Phone != e164 {
+		t.Errorf("phone = %q, want %q", user.Phone, e164)
+	}
+	if n := findAndModifyCount(fake); n != 2 {
+		t.Fatalf("findAndModify called %d times, want 2 (new form, then legacy)", n)
+	}
+
+	req, _ := fake.LastRequest("findAndModify")
+	// It must look up the TEN-DIGIT form...
+	if q := req.Doc.Lookup("query").Document().Lookup("phone").StringValue(); q != legacy {
+		t.Errorf("legacy lookup queried phone %q, want %q", q, legacy)
+	}
+	// ...and rewrite it to the new one.
+	set := req.Doc.Lookup("update").Document().Lookup("$set").Document()
+	if got := set.Lookup("phone").StringValue(); got != e164 {
+		t.Errorf("migration set phone = %q, want %q", got, e164)
+	}
+	// It must never insert: an upsert here would create the second account the
+	// whole migration exists to avoid.
+	if _, err := req.Doc.LookupErr("upsert"); err == nil {
+		t.Error("the legacy lookup must not upsert")
+	}
+}
+
+// TestUpsertUserSkipsTheLegacyLookupForForeignNumbers guards the cost of the
+// migration: only Indian numbers ever had a ten-digit form, so nobody else
+// should pay a query for it.
+func TestUpsertUserSkipsTheLegacyLookupForForeignNumbers(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	now := time.Now()
+	const us = "12025551234"
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Reply(userDoc(bson.NewObjectID(), us, now)),
+	)
+
+	if _, err := repo.UpsertUser(t.Context(), us, now); err != nil {
+		t.Fatalf("UpsertUser() error = %v, want nil", err)
+	}
+	if n := findAndModifyCount(fake); n != 2 {
+		t.Errorf("findAndModify called %d times, want 2 — a foreign number has no legacy form to probe", n)
+	}
+	req, _ := fake.LastRequest("findAndModify")
+	if upsert, err := req.Doc.LookupErr("upsert"); err != nil || !upsert.Boolean() {
+		t.Error("the second call for a foreign number must be the creating upsert")
+	}
+}
+
+// TestUpsertUserSkipsTheLegacyLookupForAnOddLengthIndianPrefix covers a number
+// that merely starts with 91 without being 91 + ten digits.
+func TestUpsertUserSkipsTheLegacyLookupForAnOddLengthIndianPrefix(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	now := time.Now()
+	const notIndian = "9112345678" // starts 91, but only eight digits follow
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Reply(userDoc(bson.NewObjectID(), notIndian, now)),
+	)
+
+	if _, err := repo.UpsertUser(t.Context(), notIndian, now); err != nil {
+		t.Fatalf("UpsertUser() error = %v, want nil", err)
+	}
+	if n := findAndModifyCount(fake); n != 2 {
+		t.Errorf("findAndModify called %d times, want 2", n)
+	}
+}
+
+// TestUpsertUserResolvesAMigrationRace covers a document appearing at the new
+// form between the first probe and the rename. The rename collides with the
+// unique index; the winner is the document we wanted, so re-read it rather
+// than failing a sign-in over a race we can resolve.
+func TestUpsertUserResolvesAMigrationRace(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	now := time.Now()
+	winner := bson.NewObjectID()
+	const e164 = "919876543210"
+
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Fail("E11000 duplicate key error collection: enerzia.users index: phone_1", 11000),
+		mongotest.Reply(userDoc(winner, e164, now)),
+	)
+
+	user, err := repo.UpsertUser(t.Context(), e164, now)
+	if err != nil {
+		t.Fatalf("UpsertUser() error = %v, want nil — a resolvable race must not fail sign-in", err)
+	}
+	if user.ID != winner {
+		t.Errorf("id = %v, want the winning document %v", user.ID, winner)
+	}
+}
+
+// TestUpsertUserSurfacesAFailedRaceRecheck stops the race branch swallowing a
+// real database failure.
+func TestUpsertUserSurfacesAFailedRaceRecheck(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Fail("E11000 duplicate key error collection: enerzia.users index: phone_1", 11000),
+		mongotest.Fail("not authorized", 13),
+	)
+
+	if _, err := repo.UpsertUser(t.Context(), "919876543210", time.Now()); err == nil {
+		t.Fatal("UpsertUser() error = nil, want the failure to surface")
+	}
+}
+
+// TestUpsertUserSurfacesAFailedLegacyLookup keeps a driver error on the
+// migration probe from being mistaken for "no legacy document".
+func TestUpsertUserSurfacesAFailedLegacyLookup(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Fail("not authorized", 13),
+	)
+
+	if _, err := repo.UpsertUser(t.Context(), "919876543210", time.Now()); err == nil {
+		t.Fatal("UpsertUser() error = nil, want the failure to surface")
+	}
+}
+
 func TestUpsertUserWrapsErrors(t *testing.T) {
 	repo, fake := newAuthRepo(t)
 	fake.Respond("findAndModify", mongotest.Fail("not authorized", 13))
 
 	if _, err := repo.UpsertUser(t.Context(), testPhone, time.Now()); err == nil {
+		t.Fatal("UpsertUser() error = nil, want the failure to surface")
+	}
+}
+
+// TestUpsertUserSurfacesAFailedCreate covers the final upsert failing.
+func TestUpsertUserSurfacesAFailedCreate(t *testing.T) {
+	repo, fake := newAuthRepo(t)
+	fake.RespondSequence("findAndModify",
+		mongotest.Reply(noDoc()),
+		mongotest.Reply(noDoc()),
+		mongotest.Fail("not authorized", 13),
+	)
+
+	if _, err := repo.UpsertUser(t.Context(), "919876543210", time.Now()); err == nil {
 		t.Fatal("UpsertUser() error = nil, want the failure to surface")
 	}
 }

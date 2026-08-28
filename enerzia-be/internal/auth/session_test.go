@@ -1,11 +1,12 @@
 package auth_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,7 +39,16 @@ func newSessionService(t *testing.T, store auth.Store, verifier *stubVerifier) *
 
 func newSessionAPI(t *testing.T, store auth.Store, verifier *stubVerifier) http.Handler {
 	t.Helper()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	h, _ := newSessionAPIWithLog(t, store, verifier)
+	return h
+}
+
+// newSessionAPIWithLog is newSessionAPI with the log captured, so a test can
+// assert what an operator would actually see in the journal.
+func newSessionAPIWithLog(t *testing.T, store auth.Store, verifier *stubVerifier) (http.Handler, *bytes.Buffer) {
+	t.Helper()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 	svc := newSessionService(t, store, verifier)
 	return server.New(server.Deps{
 		Config:  config.Config{},
@@ -47,22 +57,24 @@ func newSessionAPI(t *testing.T, store auth.Store, verifier *stubVerifier) http.
 		Logger:  logger,
 		Version: "test",
 		Started: time.Now(),
-	})
+	}), &buf
 }
 
 /* -------------------------------------------------- CreateSession service */
 
-func TestCreateSessionStripsCountryCode(t *testing.T) {
-	// TRAP 2: MSG91 returns 12-digit "919999999999"; users.phone is 10 digits.
-	verifier := &stubVerifier{phone: "919876543210"} // with country code
+func TestCreateSessionKeepsTheCountryCode(t *testing.T) {
+	// The country code is STORED, not stripped. Stripping it is what rejected
+	// every non-Indian number after MSG91 had verified it — see roadmap.md
+	// §Auth. This test exists to stop that being reintroduced.
+	verifier := &stubVerifier{phone: "919876543210"}
 	svc := newSessionService(t, newMemStore(), verifier)
 
 	result, err := svc.CreateSession(t.Context(), "access-token")
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v, want nil", err)
 	}
-	if result.User.Phone != "9876543210" {
-		t.Errorf("phone = %q, want 9876543210 (country code stripped)", result.User.Phone)
+	if result.User.Phone != "919876543210" {
+		t.Errorf("phone = %q, want 919876543210 — the country code must be kept", result.User.Phone)
 	}
 	if result.Token == "" {
 		t.Error("no token returned")
@@ -72,17 +84,47 @@ func TestCreateSessionStripsCountryCode(t *testing.T) {
 	}
 }
 
+// TestCreateSessionAcceptsInternationalNumbers is the regression test for the
+// bug this whole change exists to fix: MSG91 verified these, and the server
+// refused them anyway.
+func TestCreateSessionAcceptsInternationalNumbers(t *testing.T) {
+	cases := []struct {
+		name  string
+		phone string
+	}{
+		{name: "US", phone: "12025551234"},
+		{name: "UK", phone: "447700900123"},
+		{name: "UAE", phone: "971501234567"},
+		{name: "Norway, ten digits and not Indian", phone: "4712345678"},
+		{name: "already carries a plus", phone: "+12025551234"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newSessionService(t, newMemStore(), &stubVerifier{phone: tc.phone})
+			result, err := svc.CreateSession(t.Context(), "access-token")
+			if err != nil {
+				t.Fatalf("CreateSession(phone=%q) error = %v, want nil", tc.phone, err)
+			}
+			want := strings.TrimPrefix(tc.phone, "+")
+			if result.User.Phone != want {
+				t.Errorf("phone = %q, want %q", result.User.Phone, want)
+			}
+		})
+	}
+}
+
 func TestCreateSessionRejectsNonNormalizablePhone(t *testing.T) {
-	// A phone that does not reduce to 10 digits must be rejected, never stored.
-	// Storing it would silently create a second account for the same shopper.
+	// Rejected, never stored: a malformed identity would silently create a
+	// second account for the same shopper.
 	cases := []struct {
 		name  string
 		phone string
 	}{
 		{name: "5 digits", phone: "91999"},
-		{name: "11 digits starting with 91", phone: "91999999999"},
-		{name: "13 digits", phone: "9199999999991"},
+		{name: "past E.164's ceiling", phone: "9199999999999999"},
 		{name: "non-digits", phone: "9Xabc123456"},
+		{name: "an email, from a widget that is not mobile-only", phone: "ananya@example.com"},
+		{name: "empty", phone: ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,6 +134,48 @@ func TestCreateSessionRejectsNonNormalizablePhone(t *testing.T) {
 				t.Errorf("CreateSession(phone=%q) error = %v, want ErrSessionRejected", tc.phone, err)
 			}
 		})
+	}
+}
+
+// TestCreateSessionReportsTheShapeOfARejectedIdentifier pins the diagnostic
+// that was missing when this bug was reported live: a rejection here and a
+// rejection by MSG91 wrote the same log line, so neither could be ruled out.
+func TestCreateSessionReportsTheShapeOfARejectedIdentifier(t *testing.T) {
+	svc := newSessionService(t, newMemStore(), &stubVerifier{phone: "ananya@example.com"})
+
+	_, err := svc.CreateSession(t.Context(), "access-token")
+
+	var pe *auth.PhoneRejectedError
+	if !errors.As(err, &pe) {
+		t.Fatalf("error = %v, want a *PhoneRejectedError the handler can log", err)
+	}
+	if pe.Digits != len("ananya@example.com") {
+		t.Errorf("Digits = %d, want %d", pe.Digits, len("ananya@example.com"))
+	}
+	if pe.Prefix != "an" {
+		t.Errorf("Prefix = %q, want %q", pe.Prefix, "an")
+	}
+	// The number itself must never travel in the error — it ends up in a log.
+	if strings.Contains(pe.Error(), "ananya@example.com") {
+		t.Error("the rejected identifier leaked into the error message")
+	}
+	// It is still a rejection, so the client still gets one 401.
+	if !errors.Is(err, auth.ErrSessionRejected) {
+		t.Error("a shape-carrying rejection must still be an ErrSessionRejected")
+	}
+}
+
+func TestPhoneRejectedErrorPrefixHandlesShortValues(t *testing.T) {
+	svc := newSessionService(t, newMemStore(), &stubVerifier{phone: "7"})
+
+	_, err := svc.CreateSession(t.Context(), "access-token")
+
+	var pe *auth.PhoneRejectedError
+	if !errors.As(err, &pe) {
+		t.Fatalf("error = %v, want a *PhoneRejectedError", err)
+	}
+	if pe.Prefix != "7" {
+		t.Errorf("Prefix = %q, want %q — a value shorter than the prefix must not panic", pe.Prefix, "7")
 	}
 }
 
@@ -183,8 +267,9 @@ func TestSessionEndpointAccepts200(t *testing.T) {
 	if body.Data.Token == "" {
 		t.Error("token is empty")
 	}
-	if body.Data.User.Phone != "9876543210" {
-		t.Errorf("user.phone = %q, want 9876543210", body.Data.User.Phone)
+	// The country code reaches the client, per roadmap.md §Auth's 200 example.
+	if body.Data.User.Phone != "919876543210" {
+		t.Errorf("user.phone = %q, want 919876543210", body.Data.User.Phone)
 	}
 	if body.Data.User.ID == "" {
 		t.Error("user.id is empty")
@@ -192,6 +277,69 @@ func TestSessionEndpointAccepts200(t *testing.T) {
 	if !body.Data.ExpiresAt.After(time.Now()) {
 		t.Error("expiresAt is in the past")
 	}
+}
+
+// TestSessionEndpointLogsWhyItRejected is the test this whole change owes its
+// existence to. When international sign-in broke, "MSG91 said no" and "we said
+// no" wrote the same log line, so the cause could not be read off the journal.
+// These two must stay distinguishable.
+func TestSessionEndpointLogsWhyItRejected(t *testing.T) {
+	t.Run("our own validation refused the identifier", func(t *testing.T) {
+		h, log := newSessionAPIWithLog(t, newMemStore(), &stubVerifier{phone: "ananya@example.com"})
+
+		rec := post(t, h, "/api/v1/auth/session", `{"accessToken":"valid-token"}`)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+
+		out := log.String()
+		for _, want := range []string{`"reason":"phone_unusable"`, `"phone_prefix":"an"`, `"phone_chars":18`} {
+			if !strings.Contains(out, want) {
+				t.Errorf("log is missing %s\nlog: %s", want, out)
+			}
+		}
+		// The identifier itself must never be written to the journal.
+		if strings.Contains(out, "ananya@example.com") {
+			t.Error("the rejected identifier was logged — that is a customer's contact detail")
+		}
+		if strings.Contains(out, "msg91_code") {
+			t.Error("a rejection by us must not be logged as one by MSG91")
+		}
+	})
+
+	t.Run("MSG91 refused the token", func(t *testing.T) {
+		verifier := &stubVerifier{err: &msg91.VerificationError{
+			Type: "error", Code: "invalid", Message: "token expired",
+		}}
+		h, log := newSessionAPIWithLog(t, newMemStore(), verifier)
+
+		rec := post(t, h, "/api/v1/auth/session", `{"accessToken":"stale-token"}`)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+
+		out := log.String()
+		if !strings.Contains(out, `"reason":"msg91_rejected"`) {
+			t.Errorf("log is missing the MSG91 reason\nlog: %s", out)
+		}
+		if strings.Contains(out, "phone_prefix") {
+			t.Error("an MSG91 rejection must not be logged as one of ours")
+		}
+	})
+
+	// Both answer the client identically: which check failed is not the
+	// shopper's business, and enumerable if it were.
+	t.Run("the client cannot tell them apart", func(t *testing.T) {
+		ours := post(t, newSessionAPI(t, newMemStore(), &stubVerifier{phone: "nope@example.com"}),
+			"/api/v1/auth/session", `{"accessToken":"valid-token"}`)
+		theirs := post(t, newSessionAPI(t, newMemStore(), &stubVerifier{err: msg91.ErrVerificationFailed}),
+			"/api/v1/auth/session", `{"accessToken":"bad-token"}`)
+
+		if ours.Code != theirs.Code || ours.Body.String() != theirs.Body.String() {
+			t.Errorf("responses differ:\n ours   %d %s\n theirs %d %s",
+				ours.Code, ours.Body.String(), theirs.Code, theirs.Body.String())
+		}
+	})
 }
 
 func TestSessionEndpointRejectsEmptyAccessToken(t *testing.T) {

@@ -25,6 +25,7 @@ import {
 import { getProduct, getProducts, getTrust } from '@/lib/api/catalogue';
 import { fieldError, isApiError, isNetworkError } from '@/lib/api/errors';
 import { clearToken, getToken, onUnauthorized, setToken } from '@/lib/api/token';
+import { accountPhoneE164 } from '@/lib/shop/phone';
 import { initialState } from '@/lib/shop/pricing';
 import { shopReducer } from '@/lib/shop/reducer';
 import type { ShopAction } from '@/lib/shop/reducer';
@@ -1028,7 +1029,12 @@ export function useShop(initialProducts?: ProductDTO[]): {
         name: 'Enerzeia Future Farm',
         description: orderId,
         prefill: {
-          contact: '+91' + (user?.phone ?? ''),
+          // E.164 with the '+'. NOT '+91' + phone: the stored number has
+          // carried its own country code since 2026-08-24, and a shopper on a
+          // foreign number would otherwise be handed to Razorpay as
+          // "+9112025551234". accountPhoneE164 also upgrades a legacy
+          // ten-digit number, which a month of unexpired tokens still return.
+          contact: '+' + accountPhoneE164(user?.phone ?? ''),
           name: selectedAddr?.name,
           email: selectedAddr?.email,
         },

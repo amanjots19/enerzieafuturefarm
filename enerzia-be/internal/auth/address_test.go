@@ -31,6 +31,22 @@ func TestValidateAddressAcceptsACompleteAddress(t *testing.T) {
 	}
 }
 
+// TestValidateAddressAcceptsAnInternationalDeliveryPhone: the delivery ADDRESS
+// stays Indian (six-digit PIN, Indian state), but the contact number on it may
+// be foreign — an overseas shopper sending to family here is reachable on
+// their own number, not an Indian one.
+func TestValidateAddressAcceptsAnInternationalDeliveryPhone(t *testing.T) {
+	for _, phone := range []string{"919876543210", "12025551234", "447700900123", "9876543210"} {
+		t.Run(phone, func(t *testing.T) {
+			addr := validAddress()
+			addr.Phone = phone
+			if problem, ok := auth.ValidateAddress(addr); !ok {
+				t.Errorf("ValidateAddress() rejected phone %q: %s", phone, problem.Message)
+			}
+		})
+	}
+}
+
 func TestValidateAddressMessagesMatchTheFrontend(t *testing.T) {
 	// These strings are the contract with the shipped UI (product.md §3.4).
 	// A reworded message here is a visible product change.
@@ -63,22 +79,25 @@ func TestValidateAddressMessagesMatchTheFrontend(t *testing.T) {
 		{
 			name:      "missing phone",
 			mutate:    func(a *auth.Address) { a.Phone = "" },
-			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+			wantField: "phone", wantMessage: "Please enter a valid mobile number for delivery.",
 		},
 		{
 			name:      "phone too short",
-			mutate:    func(a *auth.Address) { a.Phone = "987654321" },
-			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+			mutate:    func(a *auth.Address) { a.Phone = "1234567" },
+			wantField: "phone", wantMessage: "Please enter a valid mobile number for delivery.",
 		},
 		{
-			name:      "phone carries a country code",
+			// The '+' is trimmed only on the way in from MSG91; an address is
+			// typed by a shopper and the form strips punctuation before it gets
+			// here, so a '+' reaching this point is malformed.
+			name:      "phone carries a plus",
 			mutate:    func(a *auth.Address) { a.Phone = "+919876543210" },
-			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+			wantField: "phone", wantMessage: "Please enter a valid mobile number for delivery.",
 		},
 		{
 			name:      "phone with separators",
 			mutate:    func(a *auth.Address) { a.Phone = "98765 43210" },
-			wantField: "phone", wantMessage: "Please enter a valid 10-digit mobile number for delivery.",
+			wantField: "phone", wantMessage: "Please enter a valid mobile number for delivery.",
 		},
 		{
 			name:      "street too short",

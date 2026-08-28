@@ -600,7 +600,7 @@ func (o Order) Validate() error {
 	// make a real past purchase unreadable. A malformed value is still caught —
 	// a label printed with a mangled number is worse than one with none.
 	if o.CustomerPhone != "" && !auth.ValidPhone(o.CustomerPhone) {
-		return fmt.Errorf("order: customer phone %q is not ten digits", o.CustomerPhone)
+		return fmt.Errorf("order: customer phone %q is not a storable phone number", o.CustomerPhone)
 	}
 	// Fulfilment progress on an order nobody paid for would mean a parcel went
 	// out for free. Only a placed order can carry one.

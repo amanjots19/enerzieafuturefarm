@@ -48,7 +48,7 @@ func ValidateAddress(a Address) (FieldProblem, bool) {
 	// Required on every write, so a shopper editing an older address adds one.
 	// The message differs from sign-in's so it is obvious which field is meant.
 	case !ValidPhone(a.Phone):
-		return FieldProblem{"phone", "Please enter a valid 10-digit mobile number for delivery."}, false
+		return FieldProblem{"phone", "Please enter a valid mobile number for delivery."}, false
 	case len(strings.TrimSpace(a.Line1)) < minStreetLength:
 		return FieldProblem{"line1", "Please enter your full street address."}, false
 	case strings.TrimSpace(a.City) == "" || strings.TrimSpace(a.State) == "":
@@ -88,9 +88,9 @@ func (r *Repository) SetAddresses(ctx context.Context, userID bson.ObjectID, add
 	}
 
 	res, err := r.users.UpdateByID(ctx, userID, bson.D{
-		{Key: "$set", Value: bson.D{
+		{Key: opSet, Value: bson.D{
 			{Key: "addresses", Value: addrs},
-			{Key: "updatedAt", Value: now},
+			{Key: fieldUpdatedAt, Value: now},
 		}},
 	})
 	if err != nil {

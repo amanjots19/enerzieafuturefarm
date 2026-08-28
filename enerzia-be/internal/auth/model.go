@@ -21,8 +21,14 @@ import (
 const (
 	// CodeLength is the number of digits in a one-time code.
 	CodeLength = 6
-	// PhoneLength is the digits in an Indian mobile number, without +91.
+	// PhoneLength is the digits in an Indian mobile subscriber number, without
+	// its country code. It is NOT the length of a stored phone number — that is
+	// 8-15 digits with the country code included (see phonePattern). This
+	// constant exists for the legacy-document lookup in UpsertUser, which is the
+	// one place the ten-digit shape still means anything.
 	PhoneLength = 10
+	// IndiaCallingCode prefixes an Indian number in stored form.
+	IndiaCallingCode = "91"
 )
 
 // Policy values from roadmap.md §Auth.
@@ -41,11 +47,31 @@ const (
 	MaxRequestsPerWindow = 3
 )
 
-// phonePattern is exactly ten digits: no +91, no spaces, no punctuation. The
-// frontend strips those before sending.
-var phonePattern = regexp.MustCompile(`^\d{10}$`)
+// phonePattern is a stored phone number: digits only, country code included,
+// no '+', no spaces, no punctuation.
+//
+// The bounds are E.164's: at most 15 digits including the country code. The
+// floor of 8 is not from the standard — it is the shortest a real subscriber
+// number plus its country code plausibly gets, and it rejects the obvious
+// garbage that an unbounded `\d+` would wave through.
+//
+// **This was `^\d{10}$` until 2026-08-24, and widening it was a bug fix, not a
+// feature.** Ten digits meant an Indian mobile with its country code already
+// stripped, so every non-Indian number was rejected by this server *after*
+// MSG91 had verified it — the shopper got the SMS, typed the right code, and
+// was told sign-in failed. See roadmap.md §Auth.
+//
+// The range still admits a legacy ten-digit value, deliberately: documents
+// written before the change hold that shape and must stay valid until they are
+// migrated (schema.md §users).
+var phonePattern = regexp.MustCompile(`^\d{8,15}$`)
 
-// ValidPhone reports whether s is a well-formed Indian mobile number.
+// ValidPhone reports whether s is a well-formed stored phone number: 8-15
+// digits, country code included, no '+'.
+//
+// It says nothing about which country the number belongs to, and callers must
+// not infer one. Delivery is India-only, but that is enforced by the PIN and
+// state rules on an address, never by the phone.
 func ValidPhone(s string) bool { return phonePattern.MatchString(s) }
 
 // codePattern is exactly six digits.

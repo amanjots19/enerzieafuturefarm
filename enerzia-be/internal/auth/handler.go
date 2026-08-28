@@ -118,15 +118,30 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 			// are diagnostic strings from MSG91, not secrets. Token length (not
 			// the value) helps identify truncation as a cause.
 			var ve *msg91.VerificationError
-			if errors.As(err, &ve) {
+			var pe *PhoneRejectedError
+			switch {
+			case errors.As(err, &ve):
 				h.logger.WarnContext(r.Context(), "auth: session token rejected by MSG91",
+					slog.String("reason", "msg91_rejected"),
 					slog.String("msg91_type", ve.Type),
 					slog.String("msg91_code", ve.Code),
 					slog.String("msg91_message", ve.Message),
 					slog.Int("token_length", len(body.AccessToken)),
 					slog.String("request_id", httpx.RequestIDFrom(r.Context())))
-			} else {
+			case errors.As(err, &pe):
+				// MSG91 was satisfied and WE refused the identifier. Logged
+				// distinctly because these two used to be indistinguishable in
+				// the journal, which is what made international sign-in failing
+				// so hard to pin down. The shape is safe to log; the number is
+				// not, and is not here — see PhoneRejectedError.
+				h.logger.WarnContext(r.Context(), "auth: verified identifier is not a storable phone number",
+					slog.String("reason", "phone_unusable"),
+					slog.Int("phone_chars", pe.Digits),
+					slog.String("phone_prefix", pe.Prefix),
+					slog.String("request_id", httpx.RequestIDFrom(r.Context())))
+			default:
 				h.logger.WarnContext(r.Context(), "auth: session token rejected",
+					slog.String("reason", "unspecified"),
 					slog.Int("token_length", len(body.AccessToken)),
 					slog.String("request_id", httpx.RequestIDFrom(r.Context())))
 			}

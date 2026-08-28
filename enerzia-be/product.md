@@ -13,8 +13,16 @@ This file is the *why*. `roadmap.md` is the *contract*. `tasks.md` is the *when*
 
 Enerzeia Future Farm sells farm-grown spirulina direct to consumers in India:
 powder, pressed tablets, low-waste refill pouches, and bundles. Single
-ingredient, FSSAI-licensed facility, batch lab-tested. Prices are in INR, the
-audience is Indian, and sign-in is by mobile number + OTP — not email/password.
+ingredient, FSSAI-licensed facility, batch lab-tested. Prices are in INR and
+sign-in is by mobile number + OTP — not email/password.
+
+**Delivery is India-only; sign-in is not** (changed 2026-08-24). A shopper on
+any country's mobile number can hold an account, because the number is only an
+identity — the case that forced it is an NRI on a foreign number ordering
+delivery to family here. What did **not** change: money is INR, Razorpay
+collects in INR, shipping is ₹50 / free over ₹499, and a delivery address still
+needs an Indian six-digit PIN. Shipping abroad means couriers, customs and
+duties, and is not built.
 
 ---
 
@@ -75,10 +83,16 @@ Has its own quantity stepper (floor 1) *before* adding. The size selection is
 shared with the grid — changing it here changes it there.
 
 ### 3.3 Sign in (`login`)
-Two stages on one screen.
 
-1. **Phone stage** — 10-digit Indian mobile, `+91` fixed. Input strips
-   non-digits and caps at 10. Invalid → "Enter a valid 10-digit mobile number".
+**This screen no longer exists as described.** Sign-in is the MSG91 widget
+(`roadmap.md` §Auth): one button, and MSG91's own modal collects the country,
+the number and the code. The two stages below are the original design and are
+kept only so the messages are on record.
+
+1. ~~**Phone stage** — 10-digit Indian mobile, `+91` fixed. Input strips
+   non-digits and caps at 10. Invalid → "Enter a valid 10-digit mobile
+   number".~~ The country is the shopper's to choose, and the verified
+   identifier is stored with its country code.
 2. **OTP stage** — 6 digits, stripped and capped. Invalid → "Enter the 6-digit
    code (try 123456)".
 
@@ -108,7 +122,7 @@ is the only message shown:
 |---|---|---|---|
 | 1 | name | non-blank | Please enter the name for delivery. |
 | 2 | email | `^\S+@\S+\.\S+$` | Please enter a valid email for order updates. |
-| 3 | phone | exactly 10 digits | Please enter a valid 10-digit mobile number for delivery. |
+| 3 | phone | 8–15 digits | Please enter a valid mobile number for delivery. |
 | 4 | line1 | ≥ 6 chars trimmed | Please enter your full street address. |
 | 5 | city, state | both non-blank | Please enter your city and state. |
 | 6 | pin | exactly 6 digits | PIN code must be 6 digits. |

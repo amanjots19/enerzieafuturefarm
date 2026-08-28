@@ -1,3 +1,4 @@
+import { formatAccountPhone } from '@/lib/shop/phone';
 import { addressDTOSummary, rupeeFromPaise } from '@/lib/shop/pricing';
 import type { ShopAction } from '@/lib/shop/reducer';
 import type { ShopState } from '@/lib/shop/types';
@@ -46,7 +47,7 @@ export function DoneScreen({
                 <br />
                 {addressDTOSummary(order.shippingAddress)}
                 <br />
-                +91 {state.user?.phone ?? ''}
+                {formatAccountPhone(state.user?.phone ?? '')}
               </div>
               <div className="rule" style={{ margin: '16px 0' }} />
               <div className="done-lines">

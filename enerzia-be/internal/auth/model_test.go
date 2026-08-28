@@ -15,13 +15,23 @@ func TestValidPhone(t *testing.T) {
 		in   string
 		want bool
 	}{
+		// Stored form: digits, country code included, no '+'.
+		{"919876543210", true},    // India
+		{"12025551234", true},     // US
+		{"447700900123", true},    // UK
+		{"4712345678", true},      // Norway — exactly ten digits, and foreign
+		{"12345678", true},        // the 8-digit floor
+		{"123456789012345", true}, // E.164's 15-digit ceiling
+		// A legacy ten-digit document predates the country code being stored and
+		// stays valid until it is migrated (schema.md §users).
 		{"9876543210", true},
 		{"0000000000", true},
-		{"987654321", false},   // nine digits
-		{"98765432101", false}, // eleven
-		{"+919876543210", false},
+		{"1234567", false},          // below the floor
+		{"1234567890123456", false}, // past E.164's ceiling
+		{"+919876543210", false},    // the '+' is trimmed by normalizePhone, not here
 		{"98765 43210", false},
 		{"98765abcde", false},
+		{"ananya@example.com", false}, // a non-mobile MSG91 widget identifier
 		{"", false},
 	}
 	for _, tt := range tests {

@@ -146,13 +146,15 @@ export function shopReducer(state: ShopState, action: ShopAction): ShopState {
       };
 
     case 'setAddr': {
-      // Numeric fields are stripped and capped as typed. Phone uses exactly the
-      // same rule as the sign-in number (digits, first 10) so the two fields
-      // behave identically — including that a pasted "+91…" keeps the leading
-      // 91 and drops the last two digits, which the shopper can see and fix.
+      // Numeric fields are stripped and capped as typed.
+      //
+      // The phone cap is 15, E.164's ceiling, not 10 — the delivery contact may
+      // be a foreign number since 2026-08-24 (product.md §3.4). At 10 a pasted
+      // "+919876543210" silently lost its last two digits, which looked like a
+      // typo the shopper had made.
       let value = action.value;
       if (action.field === 'pin') value = digits(action.value, 6);
-      if (action.field === 'phone') value = digits(action.value, 10);
+      if (action.field === 'phone') value = digits(action.value, 15);
       const addrFieldErrors = { ...state.addrFieldErrors };
       delete addrFieldErrors[action.field];
       return { ...state, addr: { ...state.addr, [action.field]: value }, addrFieldErrors };
